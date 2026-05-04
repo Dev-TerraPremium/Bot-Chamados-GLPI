@@ -124,6 +124,15 @@ class GenerativeDescriptionOrganizer:
 
         if status == "organized" and not organized_text:
             status = "needs_clarification"
+        if status == "organized" and self._organized_text_looks_unsafe(
+            organized_text
+        ):
+            status = "needs_clarification"
+            organized_text = ""
+            clarification_question = (
+                "Nao consegui organizar a descricao com seguranca. "
+                "Pode explicar novamente o problema ou solicitacao?"
+            )
         if status == "needs_clarification" and not clarification_question:
             clarification_question = (
                 "Nao entendi bem a descricao. Pode explicar novamente o que precisa?"
@@ -138,18 +147,60 @@ class GenerativeDescriptionOrganizer:
         )
 
     @staticmethod
+    def _organized_text_looks_unsafe(organized_text: str) -> bool:
+        normalized = organized_text.casefold()
+        unsafe_fragments = (
+            "nao foi identificado",
+            "não foi identificado",
+            "nao identificado",
+            "não identificado",
+            "nao foi possivel identificar",
+            "não foi possível identificar",
+            "causa provável",
+            "provavelmente",
+            "deve ser",
+            "realize ",
+            "para o equipamento",
+        )
+        return any(fragment in normalized for fragment in unsafe_fragments)
+
+    @staticmethod
     def _build_system_prompt() -> str:
         return (
             "Voce e uma IA local generativa usada exclusivamente para organizar "
-            "descricoes de chamados de TI em portugues do Brasil. Responda sempre "
-            "somente em JSON valido. Nao converse com o usuario. Nao invente causa, "
-            "nao invente sistema, nao defina categoria, nao defina gravidade, nao "
-            "sugira solucao e nao acrescente informacoes que o usuario nao deu. "
-            "Se o texto estiver confuso, sem sentido, incompleto demais ou com "
-            "termos impossiveis de recuperar com seguranca, retorne "
-            "status needs_clarification e uma pergunta curta. Se houver erro de "
-            "digitacao obvio e seguro, corrija de forma curta. O JSON deve ter "
-            "as chaves: status, organized_text, clarification_question, confidence."
+            "descricoes curtas de chamados de TI em portugues do Brasil.\n\n"
+            "Tarefa unica: transformar o texto bruto do usuario em UMA frase curta "
+            "de chamado, preservando a intencao original.\n\n"
+            "Regras obrigatorias:\n"
+            "1. Responda somente JSON valido.\n"
+            "2. Nao converse com o usuario fora do JSON.\n"
+            "3. Preserve a voz do solicitante: normalmente comece com 'Estou', "
+            "'Preciso', 'Nao consigo', 'Solicito' ou verbo equivalente ao original.\n"
+            "4. Nao transforme pedido em ordem. Nunca comece com 'Realize'.\n"
+            "5. Nao invente diagnostico, causa, solucao, sistema, equipamento, "
+            "usuario, setor, status ou gravidade.\n"
+            "6. Nao diga que algo 'nao foi identificado'. Isso e proibido.\n"
+            "7. Nao negue o relato do usuario. Apenas organize o que ele disse.\n"
+            "8. Se o usuario informou 'problema grave', preserve isso como relato, "
+            "sem calcular gravidade.\n"
+            "9. Corrija erros obvios de digitacao apenas quando a correcao for "
+            "muito segura pelo contexto.\n"
+            "10. Se nao for seguro corrigir, retorne needs_clarification.\n\n"
+            "Exemplos corretos:\n"
+            "Entrada: Estou com problema grave no meu desktop\n"
+            "Saida: {\"status\":\"organized\",\"organized_text\":\"Estou com um problema grave no meu desktop.\",\"clarification_question\":\"\",\"confidence\":0.9}\n"
+            "Entrada: Preciso realizar um desktopi nov para mim\n"
+            "Saida: {\"status\":\"organized\",\"organized_text\":\"Preciso solicitar um desktop novo para mim.\",\"clarification_question\":\"\",\"confidence\":0.78}\n"
+            "Entrada: nao consigo abrir email\n"
+            "Saida: {\"status\":\"organized\",\"organized_text\":\"Nao consigo abrir o e-mail.\",\"clarification_question\":\"\",\"confidence\":0.88}\n"
+            "Entrada: negocio la tela coisa ruim\n"
+            "Saida: {\"status\":\"needs_clarification\",\"organized_text\":\"\",\"clarification_question\":\"Pode explicar melhor qual sistema, equipamento ou erro esta com problema?\",\"confidence\":0.25}\n\n"
+            "Exemplos proibidos:\n"
+            "- 'Seu problema nao foi identificado.'\n"
+            "- 'Realize um desktop novo.'\n"
+            "- 'O problema provavelmente e rede.'\n\n"
+            "O JSON deve ter exatamente as chaves: status, organized_text, "
+            "clarification_question, confidence."
         )
 
     @staticmethod
@@ -163,6 +214,9 @@ class GenerativeDescriptionOrganizer:
             f"Finalidade: {purpose}\n"
             f"Categoria informada pelo fluxo: {category}\n"
             f"Texto original do usuario: {user_text}\n\n"
+            "Organize somente o texto original. Use a categoria apenas como contexto "
+            "leve para entender termos, nao para inventar informacoes.\n"
+            "Se o texto ja estiver claro, apenas corrija pontuacao e pequenos erros.\n\n"
             "Retorne JSON neste formato exato:\n"
             "{\n"
             '  "status": "organized" ou "needs_clarification",\n'

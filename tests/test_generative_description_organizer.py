@@ -51,3 +51,33 @@ def test_generative_organizer_can_request_clarification() -> None:
 
     assert result.needs_clarification
     assert "explicar" in result.clarification_question
+
+
+def test_generative_organizer_rejects_invented_negative_diagnosis() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": "Seu problema grave no desktop nao foi identificado.",
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description(
+        "Estou com problema grave no meu desktop"
+    )
+
+    assert result.needs_clarification
+    assert "seguranca" in result.clarification_question
+
+
+def test_system_prompt_guides_broken_desktop_text() -> None:
+    prompt = GenerativeDescriptionOrganizer._build_system_prompt()
+
+    assert "Estou com um problema grave no meu desktop." in prompt
+    assert "Preciso solicitar um desktop novo para mim." in prompt
+    assert "Seu problema nao foi identificado" in prompt
+    assert "Nunca comece com 'Realize'" in prompt
