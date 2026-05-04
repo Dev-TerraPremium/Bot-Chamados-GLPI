@@ -57,7 +57,12 @@ class OllamaLocalGenerativeClient:
                 "Nao foi possivel acionar a IA generativa local via Ollama."
             ) from exc
 
-        raw_response = response.json().get("response", "")
+        response_payload = response.json()
+        raw_response = (
+            response_payload.get("response")
+            or response_payload.get("thinking")
+            or ""
+        )
         try:
             return json.loads(raw_response)
         except json.JSONDecodeError as exc:
@@ -180,4 +185,3 @@ def build_generative_description_organizer(
         client=client,
         backend_name=f"ollama:{settings.local_generative_model}",
     )
-
