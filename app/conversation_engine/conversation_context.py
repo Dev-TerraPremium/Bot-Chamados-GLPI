@@ -68,8 +68,7 @@ class ConversationContext:
             "impact_label": self.impact_label,
             "severity": self.severity,
             "location": self.location,
-            "evidence_informed": bool(self.evidence and self.evidence != "Nao informado"),
+            "evidence_informed": bool(self.evidence and self.evidence != "Não informado"),
             "suggested_title": self.suggested_title,
             "ticket_to_complement_id": self.ticket_to_complement_id,
         }
-

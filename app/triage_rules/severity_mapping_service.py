@@ -12,6 +12,5 @@ class SeverityMappingService:
 
     def map_impact_to_severity(self, impact_id: int) -> str:
         if impact_id not in self.IMPACT_TO_SEVERITY:
-            raise ValueError("Impacto invalido para mapeamento de gravidade.")
+            raise ValueError("Impacto inválido para mapeamento de gravidade.")
         return self.IMPACT_TO_SEVERITY[impact_id]
-

@@ -112,7 +112,7 @@ class ConversationFlowController:
             self.conversation_store.save(context)
             return self._result(
                 context,
-                "Conversa reiniciada com seguranca.\n\n" + build_main_menu(context.user),
+                "🔄 **Conversa reiniciada com segurança.**\n\n" + build_main_menu(context.user),
             )
 
         if not self.rate_limiter.allow_message(context.session_id):
@@ -133,7 +133,7 @@ class ConversationFlowController:
         except ValueError:
             return self._result(
                 context,
-                "Sua mensagem esta muito longa. Envie uma descricao mais curta.",
+                "✂️ Sua mensagem está muito longa. Envie uma descrição mais curta, por favor.",
             )
 
         sanitized_message = self.input_sanitizer.sanitize(message)
@@ -161,7 +161,7 @@ class ConversationFlowController:
         context = self._get_or_create_context(normalized_session_id, channel)
         return self._result(
             context,
-            "Conversa reiniciada com seguranca.\n\n" + build_main_menu(context.user),
+            "🔄 **Conversa reiniciada com segurança.**\n\n" + build_main_menu(context.user),
         )
 
     def debug_session(self, session_id: str) -> dict | None:
@@ -238,13 +238,13 @@ class ConversationFlowController:
             )
             return self._result(
                 context,
-                "Informe o numero do chamado que deseja complementar.",
+                "🔢 Informe o **número do chamado** que deseja complementar.",
             )
         if choice == 4:
             self.state_machine.transition_to(context, ConversationState.EXITED)
             return self._result(
                 context,
-                "Sessao encerrada. Envie qualquer mensagem para iniciar novamente.",
+                "🚪 **Sessão encerrada.** Envie qualquer mensagem quando quiser iniciar novamente.",
             )
         return self._result(
             context,
@@ -263,7 +263,7 @@ class ConversationFlowController:
             )
             return self._result(
                 context,
-                "Descreva em poucas palavras o problema ou solicitacao.",
+                "⚡ Descreva em poucas palavras o problema ou solicitação.",
             )
         if choice == 2:
             context.reset_ticket_draft()
@@ -298,13 +298,13 @@ class ConversationFlowController:
         )
         return self._result(
             context,
-            "Identifiquei uma categoria provavel:\n\n"
-            f"{category_match.category_id}. {category_match.category_name}\n\n"
-            "Confirmar?\n\n"
-            "1. Sim\n"
-            "2. Escolher categoria manualmente\n"
-            "3. Manter como Outro\n"
-            "4. Cancelar chamado",
+            "🤖 **Identifiquei uma categoria provável:**\n\n"
+            f"{category_match.category_id}. **{category_match.category_name}**\n\n"
+            "Podemos seguir com ela?\n\n"
+            "1. ✅ **Sim**\n"
+            "2. 📚 **Escolher categoria manualmente**\n"
+            "3. 🧰 **Manter como Outro**\n"
+            "4. ❌ **Cancelar chamado**",
         )
 
     def _handle_quick_category_confirmation(
@@ -335,7 +335,7 @@ class ConversationFlowController:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Chamado cancelado com seguranca.\n\n" + build_main_menu(context.user),
+                "❌ **Chamado cancelado com segurança.**\n\n" + build_main_menu(context.user),
             )
         return self._result(context, build_invalid_option_message())
 
@@ -379,12 +379,12 @@ class ConversationFlowController:
         )
         return self._result(
             context,
-            "Entendi que isso parece estar relacionado a:\n\n"
-            f"{category_match.category_id}. {category_match.category_name}\n\n"
-            "Confirmar?\n\n"
-            "1. Sim\n"
-            "2. Nao, manter como Outro\n"
-            "3. Escolher outra categoria",
+            "🤖 **Entendi que isso parece estar relacionado a:**\n\n"
+            f"{category_match.category_id}. **{category_match.category_name}**\n\n"
+            "Confirma essa categoria?\n\n"
+            "1. ✅ **Sim**\n"
+            "2. 🧰 **Não, manter como Outro**\n"
+            "3. 📚 **Escolher outra categoria**",
         )
 
     def _handle_other_category_confirmation(
@@ -443,7 +443,7 @@ class ConversationFlowController:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Chamado cancelado com seguranca.\n\n" + build_main_menu(context.user),
+                "❌ **Chamado cancelado com segurança.**\n\n" + build_main_menu(context.user),
             )
         return self._result(context, build_invalid_option_message())
 
@@ -481,10 +481,10 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.EVIDENCE_COLLECTION)
             return self._result(
                 context,
-                "Descreva o erro, print ou informacao adicional. No simulador web, envie apenas texto.",
+                "📎 Descreva o erro, print ou informação adicional. No simulador web, envie apenas texto.",
             )
         if choice == 2:
-            context.evidence = "Nao informado"
+            context.evidence = "Não informado"
             return self._prepare_final_summary(context)
         return self._result(context, build_invalid_option_message())
 
@@ -513,12 +513,12 @@ class ConversationFlowController:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Chamado simulado criado com sucesso.\n\n"
-                f"Numero simulado: {created_ticket.ticket_number}\n"
-                f"Titulo: {created_ticket.title}\n"
-                f"Status: {created_ticket.status}\n"
-                f"Gravidade: {created_ticket.severity}\n"
-                f"Descricao organizada: {created_ticket.description}\n\n"
+                "✅ **Chamado simulado criado com sucesso.**\n\n"
+                f"🔢 **Número simulado:** {created_ticket.ticket_number}\n"
+                f"🏷️ **Título:** {created_ticket.title}\n"
+                f"📌 **Status:** {created_ticket.status}\n"
+                f"🚦 **Gravidade:** {created_ticket.severity}\n"
+                f"📝 **Descrição organizada:** {created_ticket.description}\n\n"
                 + build_main_menu(context.user),
                 created_ticket=created_ticket_data,
             )
@@ -526,14 +526,14 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
             return self._result(
                 context,
-                "Vamos corrigir as informacoes do chamado.\n\n" + render_category_menu(),
+                "✏️ **Vamos corrigir as informações do chamado.**\n\n" + render_category_menu(),
                 ticket_preview=context.ticket_preview,
             )
         if choice == 3:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Chamado cancelado com seguranca.\n\n" + build_main_menu(context.user),
+                "❌ **Chamado cancelado com segurança.**\n\n" + build_main_menu(context.user),
             )
         return self._result(context, build_invalid_option_message())
 
@@ -556,12 +556,12 @@ class ConversationFlowController:
         if choice == 3:
             return self._render_ticket_list(
                 context,
-                title="Meus ultimos chamados",
+                title="Meus últimos chamados",
                 status_filter=None,
             )
         if choice == 4:
             self.state_machine.transition_to(context, ConversationState.QUERY_TICKET_NUMBER)
-            return self._result(context, "Informe o numero do chamado.")
+            return self._result(context, "🔢 Informe o **número do chamado**.")
         if choice == 5:
             context.move_to_main_menu()
             return self._result(context, build_main_menu(context.user))
@@ -575,7 +575,7 @@ class ConversationFlowController:
     ) -> ConversationTurnResult:
         ticket_number = self.parser.parse_ticket_number(message)
         if ticket_number is None:
-            return self._result(context, "Informe apenas o numero do chamado.")
+            return self._result(context, "🔢 Informe apenas o **número do chamado**.")
 
         ticket = self.glpi_client.get_ticket_by_id(
             ticket_number, context.user.glpi_user_id
@@ -586,7 +586,7 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.QUERY_MENU)
             return self._result(
                 context,
-                "Nao localizei esse chamado entre os seus chamados.\n\n"
+                "🔎 Não localizei esse chamado entre os seus chamados.\n\n"
                 + build_query_menu(),
             )
 
@@ -601,7 +601,7 @@ class ConversationFlowController:
     ) -> ConversationTurnResult:
         ticket_number = self.parser.parse_ticket_number(message)
         if ticket_number is None:
-            return self._result(context, "Informe apenas o numero do chamado.")
+            return self._result(context, "🔢 Informe apenas o **número do chamado**.")
 
         ticket = self.glpi_client.get_ticket_by_id(
             ticket_number, context.user.glpi_user_id
@@ -612,7 +612,7 @@ class ConversationFlowController:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Nao localizei esse chamado entre os seus chamados disponiveis para complemento.\n\n"
+                "🔎 Não localizei esse chamado entre os seus chamados disponíveis para complemento.\n\n"
                 + build_main_menu(context.user),
             )
 
@@ -620,7 +620,7 @@ class ConversationFlowController:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Esse chamado nao esta aberto ou em atendimento para receber complemento.\n\n"
+                "⚠️ Esse chamado não está aberto ou em atendimento para receber complemento.\n\n"
                 + build_main_menu(context.user),
             )
 
@@ -630,7 +630,7 @@ class ConversationFlowController:
         )
         return self._result(
             context,
-            "Digite o complemento que deseja adicionar ao chamado.",
+            "📝 Digite o complemento que deseja adicionar ao chamado.",
         )
 
     def _handle_complement_text(
@@ -666,7 +666,7 @@ class ConversationFlowController:
             )
             return self._result(
                 context,
-                "Digite novamente o complemento que deseja adicionar.",
+                "✍️ Digite novamente o complemento que deseja adicionar.",
             )
         if choice == 3:
             return self._create_followup(
@@ -677,7 +677,7 @@ class ConversationFlowController:
             context.move_to_main_menu()
             return self._result(
                 context,
-                "Complemento cancelado com seguranca.\n\n" + build_main_menu(context.user),
+                "❌ **Complemento cancelado com segurança.**\n\n" + build_main_menu(context.user),
             )
         return self._result(context, build_invalid_option_message())
 
@@ -724,8 +724,8 @@ class ConversationFlowController:
                 status="needs_clarification",
                 organized_text="",
                 clarification_question=(
-                    "A IA generativa local nao esta disponivel agora. "
-                    "Verifique o Ollama/modelo local e envie a descricao novamente."
+                    "🤖 A IA generativa local não está disponível agora. "
+                    "Verifique o Ollama/modelo local e envie a descrição novamente."
                 ),
                 confidence=0.0,
                 backend="unavailable",
@@ -750,15 +750,15 @@ class ConversationFlowController:
         if not visible_tickets:
             return self._result(
                 context,
-                f"{title}:\n\nNao encontrei chamados para essa consulta.\n\n"
+                f"🔎 **{title}:**\n\nNão encontrei chamados para essa consulta.\n\n"
                 + build_query_menu(),
             )
 
         lines = [f"{title}:"]
         for ticket in visible_tickets:
             lines.append(
-                f"#{ticket.ticket_number} - {ticket.title}\n"
-                f"Status: {ticket.status} | Gravidade: {ticket.severity}"
+                f"#{ticket.ticket_number} - **{ticket.title}**\n"
+                f"📌 Status: {ticket.status} | 🚦 Gravidade: {ticket.severity}"
             )
         lines.append("")
         lines.append(build_query_menu())
@@ -766,13 +766,13 @@ class ConversationFlowController:
 
     def _render_ticket_detail(self, ticket) -> str:
         return (
-            f"Chamado #{ticket.ticket_number}\n"
-            f"Titulo: {ticket.title}\n"
-            f"Status: {ticket.status}\n"
-            f"Categoria: {ticket.category_name}\n"
-            f"Gravidade: {ticket.severity}\n"
-            f"Descricao: {ticket.description}\n"
-            f"Complementos: {len(ticket.followups)}"
+            f"🎫 **Chamado #{ticket.ticket_number}**\n"
+            f"🏷️ **Título:** {ticket.title}\n"
+            f"📌 **Status:** {ticket.status}\n"
+            f"📚 **Categoria:** {ticket.category_name}\n"
+            f"🚦 **Gravidade:** {ticket.severity}\n"
+            f"📝 **Descrição:** {ticket.description}\n"
+            f"💬 **Complementos:** {len(ticket.followups)}"
         )
 
     def _create_followup(
@@ -787,12 +787,12 @@ class ConversationFlowController:
         if followup is None:
             return self._result(
                 context,
-                "Nao localizei esse chamado entre os seus chamados disponiveis para complemento.\n\n"
+                "🔎 Não localizei esse chamado entre os seus chamados disponíveis para complemento.\n\n"
                 + build_main_menu(context.user),
             )
         return self._result(
             context,
-            "Complemento simulado adicionado com sucesso.\n\n"
+            "✅ **Complemento simulado adicionado com sucesso.**\n\n"
             + build_main_menu(context.user),
         )
 

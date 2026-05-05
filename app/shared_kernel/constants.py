@@ -7,7 +7,6 @@ DEFAULT_USER_EMAIL = "pedro.torres@empresa.local"
 DEFAULT_GLPI_USER_ID = 1001
 
 SECURITY_BLOCK_MESSAGE = (
-    "Nao consegui processar essa solicitacao por seguranca.\n"
+    "🔒 **Não consegui processar essa solicitação por segurança.**\n\n"
     "Por favor, descreva apenas o problema de TI que deseja registrar."
 )
-

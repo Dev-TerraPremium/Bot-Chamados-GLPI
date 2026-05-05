@@ -26,7 +26,7 @@ def test_generative_organizer_returns_organized_description() -> None:
 
     result = organizer.organize_ticket_description(
         "Preciso realizar um desktopi nov para mim",
-        category_name="Solicitacao de equipamento",
+        category_name="Solicitação de equipamento",
     )
 
     assert result.is_organized
@@ -58,7 +58,7 @@ def test_generative_organizer_rejects_invented_negative_diagnosis() -> None:
         client=FakeGenerativeClient(
             {
                 "status": "organized",
-                "organized_text": "Seu problema grave no desktop nao foi identificado.",
+                "organized_text": "Seu problema grave no desktop não foi identificado.",
                 "clarification_question": "",
                 "confidence": 0.9,
             }
@@ -71,7 +71,7 @@ def test_generative_organizer_rejects_invented_negative_diagnosis() -> None:
     )
 
     assert result.needs_clarification
-    assert "seguranca" in result.clarification_question
+    assert "segurança" in result.clarification_question
 
 
 def test_system_prompt_guides_broken_desktop_text() -> None:
@@ -79,5 +79,5 @@ def test_system_prompt_guides_broken_desktop_text() -> None:
 
     assert "Estou com um problema grave no meu desktop." in prompt
     assert "Preciso solicitar um desktop novo para mim." in prompt
-    assert "Seu problema nao foi identificado" in prompt
+    assert "Seu problema não foi identificado" in prompt
     assert "Nunca comece com 'Realize'" in prompt

@@ -21,9 +21,8 @@ class TicketFactory:
             impact_label=context.impact_label or "",
             severity=context.severity or "",
             location=context.location or "",
-            evidence=context.evidence or "Nao informado",
+            evidence=context.evidence or "Não informado",
             title=context.suggested_title or "",
         )
         self.validation_service.validate_draft(draft)
         return draft
-

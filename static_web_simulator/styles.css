@@ -1,16 +1,18 @@
 :root {
   color-scheme: light;
-  --page: #f4f6f8;
+  --page: #f3f7fb;
   --panel: #ffffff;
-  --ink: #1f2933;
+  --ink: #10233f;
   --muted: #5f6b7a;
-  --line: #d9e2ec;
-  --bot: #eef3f8;
-  --user: #0f766e;
+  --line: #d7e3ef;
+  --bot: #eef5fb;
+  --user: #004b93;
   --user-ink: #ffffff;
-  --accent: #2563eb;
+  --accent: #004b93;
+  --accent-strong: #003865;
+  --harvest: #f3c300;
   --danger: #b42318;
-  --shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+  --shadow: 0 20px 50px rgba(0, 56, 101, 0.14);
 }
 
 * {
@@ -25,7 +27,7 @@ body {
     sans-serif;
   color: var(--ink);
   background:
-    linear-gradient(180deg, rgba(37, 99, 235, 0.08), rgba(15, 118, 110, 0.05)),
+    linear-gradient(180deg, rgba(0, 75, 147, 0.10), rgba(243, 195, 0, 0.09)),
     var(--page);
 }
 
@@ -61,7 +63,28 @@ textarea {
   gap: 16px;
   padding: 20px 22px;
   border-bottom: 1px solid var(--line);
-  background: #ffffff;
+  background:
+    linear-gradient(90deg, rgba(0, 75, 147, 0.06), rgba(243, 195, 0, 0.12)),
+    #ffffff;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--accent);
+  border-bottom: 4px solid var(--harvest);
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .eyebrow {
@@ -77,6 +100,7 @@ h1 {
   font-size: clamp(1.25rem, 2vw, 1.6rem);
   font-weight: 750;
   letter-spacing: 0;
+  color: var(--accent-strong);
 }
 
 .secondary-button,
@@ -91,7 +115,8 @@ h1 {
   min-height: 40px;
   padding: 0 14px;
   color: var(--accent);
-  background: #eef4ff;
+  background: #eef5fb;
+  border: 1px solid rgba(0, 75, 147, 0.14);
 }
 
 .messages {
@@ -127,7 +152,13 @@ h1 {
 
 .user .bubble {
   color: var(--user-ink);
-  background: var(--user);
+  background: linear-gradient(180deg, var(--user), var(--accent-strong));
+  border-bottom: 3px solid var(--harvest);
+}
+
+.bubble strong {
+  font-weight: 800;
+  color: inherit;
 }
 
 .system-note {
@@ -157,7 +188,7 @@ textarea {
 
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px rgba(0, 75, 147, 0.14);
 }
 
 .composer button {
@@ -166,6 +197,7 @@ textarea:focus {
   padding: 0 18px;
   color: #ffffff;
   background: var(--accent);
+  border-bottom: 4px solid var(--harvest);
 }
 
 button:disabled,
@@ -210,4 +242,3 @@ textarea:disabled {
     width: 100%;
   }
 }
-

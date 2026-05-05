@@ -54,7 +54,7 @@ class OllamaLocalGenerativeClient:
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise LocalGenerativeAIUnavailableError(
-                "Nao foi possivel acionar a IA generativa local via Ollama."
+                "Não foi possível acionar a IA generativa local via Ollama."
             ) from exc
 
         response_payload = response.json()
@@ -72,11 +72,7 @@ class OllamaLocalGenerativeClient:
 
 
 class GenerativeDescriptionOrganizer:
-    """Local generative organizer for ticket descriptions.
-
-    The model is constrained to one task: produce a concise organized
-    description or ask for clarification when the input is too broken.
-    """
+    """Local generative organizer for ticket descriptions."""
 
     def __init__(
         self,
@@ -130,12 +126,12 @@ class GenerativeDescriptionOrganizer:
             status = "needs_clarification"
             organized_text = ""
             clarification_question = (
-                "Nao consegui organizar a descricao com seguranca. "
-                "Pode explicar novamente o problema ou solicitacao?"
+                "Não consegui organizar a descrição com segurança. "
+                "Pode explicar novamente o problema ou solicitação?"
             )
         if status == "needs_clarification" and not clarification_question:
             clarification_question = (
-                "Nao entendi bem a descricao. Pode explicar novamente o que precisa?"
+                "Não entendi bem a descrição. Pode explicar novamente o que precisa?"
             )
 
         return DescriptionOrganizationResult(
@@ -167,38 +163,38 @@ class GenerativeDescriptionOrganizer:
     @staticmethod
     def _build_system_prompt() -> str:
         return (
-            "Voce e uma IA local generativa usada exclusivamente para organizar "
-            "descricoes curtas de chamados de TI em portugues do Brasil.\n\n"
-            "Tarefa unica: transformar o texto bruto do usuario em UMA frase curta "
-            "de chamado, preservando a intencao original.\n\n"
-            "Regras obrigatorias:\n"
-            "1. Responda somente JSON valido.\n"
-            "2. Nao converse com o usuario fora do JSON.\n"
+            "Você é uma IA local generativa usada exclusivamente para organizar "
+            "descrições curtas de chamados de TI em português do Brasil.\n\n"
+            "Tarefa única: transformar o texto bruto do usuário em UMA frase curta "
+            "de chamado, preservando a intenção original.\n\n"
+            "Regras obrigatórias:\n"
+            "1. Responda somente JSON válido.\n"
+            "2. Não converse com o usuário fora do JSON.\n"
             "3. Preserve a voz do solicitante: normalmente comece com 'Estou', "
-            "'Preciso', 'Nao consigo', 'Solicito' ou verbo equivalente ao original.\n"
-            "4. Nao transforme pedido em ordem. Nunca comece com 'Realize'.\n"
-            "5. Nao invente diagnostico, causa, solucao, sistema, equipamento, "
-            "usuario, setor, status ou gravidade.\n"
-            "6. Nao diga que algo 'nao foi identificado'. Isso e proibido.\n"
-            "7. Nao negue o relato do usuario. Apenas organize o que ele disse.\n"
-            "8. Se o usuario informou 'problema grave', preserve isso como relato, "
+            "'Preciso', 'Não consigo', 'Solicito' ou verbo equivalente ao original.\n"
+            "4. Não transforme pedido em ordem. Nunca comece com 'Realize'.\n"
+            "5. Não invente diagnóstico, causa, solução, sistema, equipamento, "
+            "usuário, setor, status ou gravidade.\n"
+            "6. Não diga que algo 'não foi identificado'. Isso é proibido.\n"
+            "7. Não negue o relato do usuário. Apenas organize o que ele disse.\n"
+            "8. Se o usuário informou 'problema grave', preserve isso como relato, "
             "sem calcular gravidade.\n"
-            "9. Corrija erros obvios de digitacao apenas quando a correcao for "
+            "9. Corrija erros óbvios de digitação apenas quando a correção for "
             "muito segura pelo contexto.\n"
-            "10. Se nao for seguro corrigir, retorne needs_clarification.\n\n"
+            "10. Se não for seguro corrigir, retorne needs_clarification.\n\n"
             "Exemplos corretos:\n"
             "Entrada: Estou com problema grave no meu desktop\n"
-            "Saida: {\"status\":\"organized\",\"organized_text\":\"Estou com um problema grave no meu desktop.\",\"clarification_question\":\"\",\"confidence\":0.9}\n"
+            "Saída: {\"status\":\"organized\",\"organized_text\":\"Estou com um problema grave no meu desktop.\",\"clarification_question\":\"\",\"confidence\":0.9}\n"
             "Entrada: Preciso realizar um desktopi nov para mim\n"
-            "Saida: {\"status\":\"organized\",\"organized_text\":\"Preciso solicitar um desktop novo para mim.\",\"clarification_question\":\"\",\"confidence\":0.78}\n"
-            "Entrada: nao consigo abrir email\n"
-            "Saida: {\"status\":\"organized\",\"organized_text\":\"Nao consigo abrir o e-mail.\",\"clarification_question\":\"\",\"confidence\":0.88}\n"
+            "Saída: {\"status\":\"organized\",\"organized_text\":\"Preciso solicitar um desktop novo para mim.\",\"clarification_question\":\"\",\"confidence\":0.78}\n"
+            "Entrada: não consigo abrir e-mail\n"
+            "Saída: {\"status\":\"organized\",\"organized_text\":\"Não consigo abrir o e-mail.\",\"clarification_question\":\"\",\"confidence\":0.88}\n"
             "Entrada: negocio la tela coisa ruim\n"
-            "Saida: {\"status\":\"needs_clarification\",\"organized_text\":\"\",\"clarification_question\":\"Pode explicar melhor qual sistema, equipamento ou erro esta com problema?\",\"confidence\":0.25}\n\n"
+            "Saída: {\"status\":\"needs_clarification\",\"organized_text\":\"\",\"clarification_question\":\"Pode explicar melhor qual sistema, equipamento ou erro está com problema?\",\"confidence\":0.25}\n\n"
             "Exemplos proibidos:\n"
-            "- 'Seu problema nao foi identificado.'\n"
+            "- 'Seu problema não foi identificado.'\n"
             "- 'Realize um desktop novo.'\n"
-            "- 'O problema provavelmente e rede.'\n\n"
+            "- 'O problema provavelmente é rede.'\n\n"
             "O JSON deve ter exatamente as chaves: status, organized_text, "
             "clarification_question, confidence."
         )
@@ -209,14 +205,14 @@ class GenerativeDescriptionOrganizer:
         category_name: str | None,
         purpose: str,
     ) -> str:
-        category = category_name or "Nao informada"
+        category = category_name or "Não informada"
         return (
             f"Finalidade: {purpose}\n"
             f"Categoria informada pelo fluxo: {category}\n"
-            f"Texto original do usuario: {user_text}\n\n"
+            f"Texto original do usuário: {user_text}\n\n"
             "Organize somente o texto original. Use a categoria apenas como contexto "
-            "leve para entender termos, nao para inventar informacoes.\n"
-            "Se o texto ja estiver claro, apenas corrija pontuacao e pequenos erros.\n\n"
+            "leve para entender termos, não para inventar informações.\n"
+            "Se o texto já estiver claro, apenas corrija pontuação e pequenos erros.\n\n"
             "Retorne JSON neste formato exato:\n"
             "{\n"
             '  "status": "organized" ou "needs_clarification",\n'

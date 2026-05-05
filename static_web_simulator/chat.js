@@ -24,11 +24,31 @@ function appendMessage(role, text) {
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.textContent = text;
+  renderSafeMessage(bubble, text);
 
   row.appendChild(bubble);
   messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function renderSafeMessage(container, text) {
+  container.replaceChildren();
+
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (!part) {
+      continue;
+    }
+
+    if (part.startsWith("**") && part.endsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = part.slice(2, -2);
+      container.appendChild(strong);
+      continue;
+    }
+
+    container.appendChild(document.createTextNode(part));
+  }
 }
 
 function setBusy(isBusy) {
@@ -50,7 +70,7 @@ async function postConversationMessage(message) {
   });
 
   if (!response.ok) {
-    throw new Error("Falha ao comunicar com o servidor.");
+    throw new Error("Não consegui comunicar com o servidor.");
   }
 
   return response.json();
@@ -69,7 +89,7 @@ async function resetConversation() {
   });
 
   if (!response.ok) {
-    throw new Error("Falha ao reiniciar a conversa.");
+    throw new Error("Não consegui reiniciar a conversa.");
   }
 
   return response.json();
@@ -137,4 +157,3 @@ inputEl.addEventListener("keydown", (event) => {
 });
 
 sendBotStart();
-

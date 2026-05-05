@@ -10,25 +10,25 @@ class TicketCategory(str, Enum):
     ACESSO_SENHA = "Acesso / Senha"
     TELEFONIA = "Telefonia"
     GLPI = "GLPI"
-    SOLICITACAO_EQUIPAMENTO = "Solicitacao de equipamento"
-    CAMERAS_CFTV = "Cameras / CFTV"
+    SOLICITACAO_EQUIPAMENTO = "Solicitação de equipamento"
+    CAMERAS_CFTV = "Câmeras / CFTV"
     UBIQUITI_WIFI = "Ubiquiti / Wi-Fi"
     OUTRO = "Outro"
 
 
 class TicketImpact(str, Enum):
-    SIMPLE_REQUEST = "Duvida ou solicitacao simples"
-    ONE_USER_CAN_WORK = "Afeta somente voce, mas ainda consegue trabalhar"
-    ONE_USER_STOPPED = "Afeta somente voce e esta parado"
-    MANY_USERS = "Afeta varias pessoas"
-    CRITICAL_OPERATION = "Afeta setor inteiro, filial ou operacao critica"
+    SIMPLE_REQUEST = "Dúvida ou solicitação simples"
+    ONE_USER_CAN_WORK = "Afeta somente você, mas ainda consegue trabalhar"
+    ONE_USER_STOPPED = "Afeta somente você e está parado"
+    MANY_USERS = "Afeta várias pessoas"
+    CRITICAL_OPERATION = "Afeta setor inteiro, filial ou operação crítica"
 
 
 class TicketSeverity(str, Enum):
     LOW = "Baixa"
-    MEDIUM = "Media"
+    MEDIUM = "Média"
     HIGH = "Alta"
-    CRITICAL = "Critica"
+    CRITICAL = "Crítica"
 
 
 class TicketStatus(str, Enum):
@@ -38,6 +38,5 @@ class TicketStatus(str, Enum):
 
 
 class TicketOpeningMode(str, Enum):
-    QUICK = "Chamado rapido"
+    QUICK = "Chamado rápido"
     DETAILED = "Chamado detalhado"
-

@@ -28,9 +28,9 @@ def base_payload(glpi_user_id: int, title: str) -> dict:
         "description": title,
         "impact_id": 2,
         "impact_label": "Afeta somente voce, mas ainda consegue trabalhar",
-        "severity": "Media",
+        "severity": "Média",
         "location": "TI - Matriz",
-        "evidence": "Nao informado",
+        "evidence": "Não informado",
     }
 
 
@@ -53,7 +53,7 @@ def test_suspicious_input_is_blocked_by_conversation_endpoint() -> None:
     )
 
     assert response.status_code == 200
-    assert "seguranca" in response.json()["bot_message"]
+    assert "segurança" in response.json()["bot_message"]
 
 
 def test_query_returns_only_authenticated_user_tickets() -> None:
@@ -79,4 +79,3 @@ def test_followup_only_allows_authenticated_user_ticket() -> None:
     assert glpi_client.get_ticket_by_id(other_ticket.ticket_number, 1001) is None
     assert glpi_client.add_followup(other_ticket.ticket_number, 1001, "teste") is None
     assert glpi_client.add_followup(own_ticket.ticket_number, 1001, "teste") is not None
-

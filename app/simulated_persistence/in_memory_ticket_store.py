@@ -24,7 +24,7 @@ class InMemoryTicketStore:
             channel=payload["channel"],
             location=payload["location"],
             impact_label=payload["impact_label"],
-            evidence=payload.get("evidence") or "Nao informado",
+            evidence=payload.get("evidence") or "Não informado",
             opening_mode=payload["opening_mode"],
             created_at=DateTimeProvider.utc_now_iso(),
         )
@@ -61,4 +61,3 @@ class InMemoryTicketStore:
     def clear(self) -> None:
         self._tickets_by_number.clear()
         self._ticket_counter = count(10001)
-

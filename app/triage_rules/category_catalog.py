@@ -14,81 +14,96 @@ CATEGORY_OPTIONS: tuple[CategoryOption, ...] = (
         1,
         "Internet / Rede",
         "Descreva brevemente o problema de rede ou internet.",
-        ("Estou sem internet.", "A rede esta oscilando.", "Nao acesso a VPN."),
+        ("Estou sem internet.", "A rede está oscilando.", "Não acesso a VPN."),
     ),
     CategoryOption(
         2,
         "Computador / Notebook",
         "Descreva brevemente o problema no computador ou notebook.",
-        ("Notebook nao liga.", "Computador esta lento.", "Tela esta piscando."),
+        ("Notebook não liga.", "Computador está lento.", "Tela está piscando."),
     ),
     CategoryOption(
         3,
         "Impressora",
-        "Descreva brevemente o problema de impressao.",
-        ("Nao consigo imprimir.", "Impressora esta atolando papel.", "Fila travada."),
+        "Descreva brevemente o problema de impressão.",
+        ("Não consigo imprimir.", "Impressora está atolando papel.", "Fila travada."),
     ),
     CategoryOption(
         4,
         "Sistema / ERP",
         "Descreva brevemente o problema no sistema ou ERP.",
-        ("ERP travando.", "Sistema apresenta erro ao salvar.", "Tela nao carrega."),
+        ("ERP travando.", "Sistema apresenta erro ao salvar.", "Tela não carrega."),
     ),
     CategoryOption(
         5,
         "E-mail / Microsoft 365",
         "Descreva brevemente o problema de e-mail ou Microsoft 365.",
-        ("E-mail nao abre.", "Outlook nao sincroniza.", "Teams nao entra."),
+        ("E-mail não abre.", "Outlook não sincroniza.", "Teams não entra."),
     ),
     CategoryOption(
         6,
         "Acesso / Senha",
-        "Descreva brevemente o problema ou solicitacao de acesso.",
+        "Descreva brevemente o problema ou solicitação de acesso.",
         (
             "Esqueci minha senha do ERP.",
-            "Meu usuario do Windows esta bloqueado.",
-            "Preciso de acesso a pasta Financeiro.",
-            "Preciso alterar a permissao de um colaborador.",
-            "MFA nao esta funcionando.",
+            "Meu usuário do Windows está bloqueado.",
+            "Preciso de acesso à pasta Financeiro.",
+            "Preciso alterar a permissão de um colaborador.",
+            "MFA não está funcionando.",
         ),
     ),
     CategoryOption(
         7,
         "Telefonia",
         "Descreva brevemente o problema de telefonia.",
-        ("Ramal sem linha.", "Telefone mudo.", "Nao consigo transferir ligacao."),
+        ("Ramal sem linha.", "Telefone mudo.", "Não consigo transferir ligação."),
     ),
     CategoryOption(
         8,
         "GLPI",
         "Descreva brevemente o problema relacionado ao GLPI.",
-        ("GLPI nao abre.", "Nao consigo consultar chamado.", "Erro ao fechar chamado."),
+        ("GLPI não abre.", "Não consigo consultar chamado.", "Erro ao fechar chamado."),
     ),
     CategoryOption(
         9,
-        "Solicitacao de equipamento",
+        "Solicitação de equipamento",
         "Descreva brevemente o equipamento solicitado.",
         ("Preciso de mouse.", "Solicito um monitor.", "Novo colaborador precisa de kit."),
     ),
     CategoryOption(
         10,
-        "Cameras / CFTV",
-        "Descreva brevemente o problema de cameras ou CFTV.",
-        ("Camera sem imagem.", "DVR offline.", "Imagem travando."),
+        "Câmeras / CFTV",
+        "Descreva brevemente o problema de câmeras ou CFTV.",
+        ("Câmera sem imagem.", "DVR offline.", "Imagem travando."),
     ),
     CategoryOption(
         11,
         "Ubiquiti / Wi-Fi",
         "Descreva brevemente o problema de Wi-Fi ou Ubiquiti.",
-        ("Wi-Fi caindo.", "Access point offline.", "Sinal fraco no deposito."),
+        ("Wi-Fi caindo.", "Access point offline.", "Sinal fraco no depósito."),
     ),
     CategoryOption(
         12,
         "Outro",
-        "Descreva brevemente o problema ou solicitacao.",
-        ("Tenho uma solicitacao diferente.",),
+        "Descreva brevemente o problema ou solicitação.",
+        ("Tenho uma solicitação diferente.",),
     ),
 )
+
+CATEGORY_ICONS_BY_ID = {
+    1: "🌐",
+    2: "💻",
+    3: "🖨️",
+    4: "🧩",
+    5: "📧",
+    6: "🔐",
+    7: "☎️",
+    8: "🎫",
+    9: "🚜",
+    10: "📹",
+    11: "📡",
+    12: "🧰",
+}
 
 
 def get_category_by_id(category_id: int) -> CategoryOption | None:
@@ -111,17 +126,20 @@ def get_category_by_name(category_name: str) -> CategoryOption | None:
 
 
 def render_category_menu() -> str:
-    lines = ["Escolha uma categoria:"]
-    lines.extend(f"{category.id}. {category.name}" for category in CATEGORY_OPTIONS)
+    lines = ["📚 **Escolha uma categoria:**"]
+    lines.extend(
+        f"{category.id}. {CATEGORY_ICONS_BY_ID[category.id]} **{category.name}**"
+        for category in CATEGORY_OPTIONS
+    )
     return "\n".join(lines)
 
 
 def render_description_prompt(category: CategoryOption) -> str:
     examples = "\n".join(f"- {example}" for example in category.examples)
     return (
-        f"Categoria selecionada:\n{category.name}\n\n"
+        f"✅ **Categoria selecionada:**\n"
+        f"{CATEGORY_ICONS_BY_ID[category.id]} **{category.name}**\n\n"
         f"{category.description_hint}\n\n"
-        f"Exemplos:\n{examples}\n\n"
-        "Digite em poucas palavras o que aconteceu ou o que voce precisa:"
+        f"**Exemplos:**\n{examples}\n\n"
+        "Digite em poucas palavras o que aconteceu ou o que você precisa:"
     )
-
