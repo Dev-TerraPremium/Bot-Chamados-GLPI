@@ -1,0 +1,91 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: bot-chamados-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+    container_name: bot-chamados-web
+    env_file:
+      - .env.docker
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from urllib.request import urlopen; import sys; sys.exit(0 if urlopen('http://127.0.0.1:8000/health').status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker-ai:
+    build:
+      context: .
+    container_name: bot-chamados-worker-ai
+    env_file:
+      - .env.docker
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "python",
+        "-m",
+        "celery",
+        "-A",
+        "app.background_jobs.celery_app.celery_app",
+        "worker",
+        "-Q",
+        "ai_local",
+        "--pool=solo",
+        "--concurrency=1",
+        "--loglevel=INFO",
+      ]
+
+  worker-glpi:
+    build:
+      context: .
+    container_name: bot-chamados-worker-glpi
+    env_file:
+      - .env.docker
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "python",
+        "-m",
+        "celery",
+        "-A",
+        "app.background_jobs.celery_app.celery_app",
+        "worker",
+        "-Q",
+        "glpi_io",
+        "--pool=solo",
+        "--concurrency=1",
+        "--loglevel=INFO",
+      ]

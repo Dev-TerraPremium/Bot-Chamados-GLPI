@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from app.application_config.settings import AppSettings
 from app.conversation_engine.conversation_flow_controller import (
     ConversationFlowController,
 )
@@ -26,6 +27,7 @@ class ClarificationDescriptionOrganizer:
 
 def test_description_collection_asks_for_clarification_when_text_is_broken() -> None:
     controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=False),
         description_organizer=ClarificationDescriptionOrganizer()
     )
     session_id = str(uuid4())

@@ -7,11 +7,11 @@ from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
 
 
 def build_glpi_client(settings: AppSettings, ticket_store: InMemoryTicketStore):
-    if not settings.is_glpi_real_mode:
-        return GLPIMockClient(ticket_store)
-
     if settings.use_celery_workers:
         return CeleryGLPIClient(settings)
+
+    if not settings.is_glpi_real_mode:
+        return GLPIMockClient(ticket_store)
 
     return GLPIRealClient(
         GLPIIntegrationConfig(

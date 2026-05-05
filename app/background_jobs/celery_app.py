@@ -27,6 +27,9 @@ celery_app.conf.update(
         "app.background_jobs.tasks.organize_description_task": {
             "queue": settings.ai_queue_name
         },
+        "app.background_jobs.tasks.detail_ticket_description_task": {
+            "queue": settings.ai_queue_name
+        },
         "app.background_jobs.tasks.create_glpi_ticket_task": {
             "queue": settings.glpi_queue_name
         },

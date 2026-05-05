@@ -8,6 +8,7 @@ class ConversationState(str, Enum):
     OTHER_CATEGORY_TEXT = "other_category_text"
     OTHER_CATEGORY_CONFIRMATION = "other_category_confirmation"
     DESCRIPTION_COLLECTION = "description_collection"
+    DESCRIPTION_CLARIFICATION = "description_clarification"
     DESCRIPTION_REVIEW = "description_review"
     IMPACT_SELECTION = "impact_selection"
     LOCATION_COLLECTION = "location_collection"

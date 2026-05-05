@@ -2,15 +2,24 @@ from dataclasses import asdict
 
 from app.application_config.settings import load_settings
 from app.background_jobs.celery_app import celery_app
+from app.glpi_integration_reserved.glpi_mock_client import GLPIMockClient
 from app.glpi_integration_reserved.glpi_future_real_client import GLPIRealClient
 from app.glpi_integration_reserved.glpi_integration_config import GLPIIntegrationConfig
 from app.local_light_ai.generative_description_organizer import (
     build_generative_description_organizer,
 )
+from app.local_light_ai.guided_ticket_detailer import build_guided_ticket_detailer
+from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
 
 
-def _build_real_glpi_client() -> GLPIRealClient:
+worker_ticket_store = InMemoryTicketStore()
+
+
+def _build_glpi_client():
     settings = load_settings()
+    if not settings.is_glpi_real_mode:
+        return GLPIMockClient(worker_ticket_store)
+
     return GLPIRealClient(
         GLPIIntegrationConfig(
             base_url=settings.glpi_base_url,
@@ -45,6 +54,28 @@ def organize_description_task(
 
 
 @celery_app.task(
+    name="app.background_jobs.tasks.detail_ticket_description_task",
+    soft_time_limit=25,
+    time_limit=30,
+)
+def detail_ticket_description_task(
+    original_description: str,
+    clarification_turns: list[dict[str, str]],
+    category_name: str | None,
+    max_questions: int,
+) -> dict:
+    detailer = build_guided_ticket_detailer(load_settings())
+    return asdict(
+        detailer.detail_ticket_description(
+            original_description=original_description,
+            clarification_turns=clarification_turns,
+            category_name=category_name,
+            max_questions=max_questions,
+        )
+    )
+
+
+@celery_app.task(
     name="app.background_jobs.tasks.create_glpi_ticket_task",
     autoretry_for=(ConnectionError, TimeoutError),
     retry_backoff=True,
@@ -53,7 +84,7 @@ def organize_description_task(
     time_limit=30,
 )
 def create_glpi_ticket_task(ticket_data: dict) -> dict:
-    return _build_real_glpi_client().create_ticket(ticket_data).to_dict()
+    return _build_glpi_client().create_ticket(ticket_data).to_dict()
 
 
 @celery_app.task(
@@ -65,10 +96,7 @@ def create_glpi_ticket_task(ticket_data: dict) -> dict:
     time_limit=30,
 )
 def query_glpi_tickets_task(user_id: int) -> list[dict]:
-    return [
-        ticket.to_dict()
-        for ticket in _build_real_glpi_client().get_my_tickets(user_id)
-    ]
+    return [ticket.to_dict() for ticket in _build_glpi_client().get_my_tickets(user_id)]
 
 
 @celery_app.task(
@@ -80,7 +108,7 @@ def query_glpi_tickets_task(user_id: int) -> list[dict]:
     time_limit=30,
 )
 def get_glpi_ticket_task(ticket_id: int, user_id: int) -> dict | None:
-    ticket = _build_real_glpi_client().get_ticket_by_id(ticket_id, user_id)
+    ticket = _build_glpi_client().get_ticket_by_id(ticket_id, user_id)
     return None if ticket is None else ticket.to_dict()
 
 
@@ -93,7 +121,7 @@ def get_glpi_ticket_task(ticket_id: int, user_id: int) -> dict | None:
     time_limit=30,
 )
 def add_glpi_followup_task(ticket_id: int, user_id: int, content: str) -> dict | None:
-    followup = _build_real_glpi_client().add_followup(ticket_id, user_id, content)
+    followup = _build_glpi_client().add_followup(ticket_id, user_id, content)
     return None if followup is None else followup.to_dict()
 
 
@@ -103,4 +131,4 @@ def add_glpi_followup_task(ticket_id: int, user_id: int, content: str) -> dict |
     time_limit=30,
 )
 def validate_glpi_mapping_task(category_name: str) -> dict | None:
-    return _build_real_glpi_client().find_category_by_name(category_name)
+    return _build_glpi_client().find_category_by_name(category_name)

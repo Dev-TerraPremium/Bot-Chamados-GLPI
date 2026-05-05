@@ -36,6 +36,8 @@ class AppSettings:
     ollama_base_url: str = "http://127.0.0.1:11434"
     local_generative_model: str = "hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0"
     local_generative_timeout_seconds: float = 30.0
+    ai_guided_detailing_enabled: bool = True
+    ai_max_clarification_questions: int = 5
     ai_max_input_chars: int = 1000
     ai_max_output_chars: int = 800
     ai_ollama_num_predict: int = 180
@@ -110,6 +112,8 @@ def load_settings() -> AppSettings:
         local_generative_timeout_seconds=_get_float(
             "LOCAL_GENERATIVE_TIMEOUT_SECONDS", 30.0
         ),
+        ai_guided_detailing_enabled=_get_bool("AI_GUIDED_DETAILING_ENABLED", True),
+        ai_max_clarification_questions=_get_int("AI_MAX_CLARIFICATION_QUESTIONS", 5),
         ai_max_input_chars=_get_int("AI_MAX_INPUT_CHARS", 1000),
         ai_max_output_chars=_get_int("AI_MAX_OUTPUT_CHARS", 800),
         ai_ollama_num_predict=_get_int("AI_OLLAMA_NUM_PREDICT", 180),

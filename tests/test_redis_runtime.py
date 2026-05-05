@@ -22,6 +22,13 @@ def test_redis_conversation_store_round_trips_context() -> None:
     )
     context.selected_category_id = 11
     context.selected_category_name = "Ubiquiti / Wi-Fi"
+    context.description_clarification_question = "Qual erro aparece?"
+    context.description_clarification_turns.append(
+        {
+            "question": "Qual equipamento está afetado?",
+            "answer": "Notebook do financeiro",
+        }
+    )
 
     store.save(context)
     loaded = store.get("s1")
@@ -29,6 +36,13 @@ def test_redis_conversation_store_round_trips_context() -> None:
     assert loaded is not None
     assert loaded.selected_category_name == "Ubiquiti / Wi-Fi"
     assert loaded.user.glpi_user_id == 266
+    assert loaded.description_clarification_question == "Qual erro aparece?"
+    assert loaded.description_clarification_turns == [
+        {
+            "question": "Qual equipamento está afetado?",
+            "answer": "Notebook do financeiro",
+        }
+    ]
 
 
 def test_redis_rate_limiter_blocks_after_limit() -> None:

@@ -37,5 +37,7 @@ def runtime_healthcheck() -> dict:
         "redis": redis_status,
         "celery_workers_enabled": settings.use_celery_workers,
         "glpi_integration_mode": settings.glpi_integration_mode,
+        "ai_guided_detailing_enabled": settings.ai_guided_detailing_enabled,
+        "ai_max_clarification_questions": settings.ai_max_clarification_questions,
         "debug_routes_exposed": settings.expose_debug_routes,
     }

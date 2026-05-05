@@ -18,8 +18,22 @@ def build_open_ticket_prompt() -> str:
     return (
         "🆕 **Vamos abrir seu chamado.**\n\n"
         "Descreva em poucas palavras o que aconteceu ou o que você precisa.\n"
-        "Eu vou organizar o texto e sugerir a categoria automaticamente.\n\n"
+        "Se faltar detalhe, eu posso fazer algumas perguntas rápidas antes de organizar o texto.\n"
+        "Depois vou sugerir a categoria automaticamente.\n\n"
         "Você poderá confirmar a categoria sugerida ou escolher outra manualmente."
+    )
+
+
+def build_description_clarification_message(
+    question: str,
+    question_number: int,
+    max_questions: int,
+) -> str:
+    return (
+        "🤖 **Vou detalhar um pouco melhor antes de abrir o chamado.**\n\n"
+        f"Pergunta {question_number} de até {max_questions}:\n"
+        f"{question}\n\n"
+        "Responda em uma frase curta. Se não souber, diga **não sei** ou **pular**."
     )
 
 

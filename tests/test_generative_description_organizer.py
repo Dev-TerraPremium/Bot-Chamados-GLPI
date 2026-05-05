@@ -6,8 +6,10 @@ from app.local_light_ai.generative_description_organizer import (
 class FakeGenerativeClient:
     def __init__(self, payload: dict) -> None:
         self.payload = payload
+        self.user_prompt = ""
 
     def generate_json(self, system_prompt: str, user_prompt: str, options: dict) -> dict:
+        self.user_prompt = user_prompt
         return self.payload
 
 
@@ -68,6 +70,135 @@ def test_generative_organizer_rejects_invented_negative_diagnosis() -> None:
 
     result = organizer.organize_ticket_description(
         "Estou com problema grave no meu desktop"
+    )
+
+    assert result.needs_clarification
+    assert "segurança" in result.clarification_question
+
+
+def test_generative_organizer_rejects_invented_resolution() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": "O problema no computador foi identificado e resolvido.",
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description(
+        "Estou com problema no meu computador"
+    )
+
+    assert result.needs_clarification
+    assert "segurança" in result.clarification_question
+
+
+def test_generative_organizer_rejects_invented_cause() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": "O problema no computador é causado pelo notebook.",
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description(
+        "Estou com problema no meu computador"
+    )
+
+    assert result.needs_clarification
+    assert "segurança" in result.clarification_question
+
+
+def test_generative_organizer_rejects_speculative_diagnosis() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": "A tela azul pode indicar problema no sistema.",
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description(
+        "Notebook do financeiro com tela azul ao iniciar"
+    )
+
+    assert result.needs_clarification
+    assert "segurança" in result.clarification_question
+
+
+def test_generative_organizer_rejects_unsupported_terms() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": "O sistema está configurado para gerenciar a rede Wi-Fi.",
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description("Wi-Fi caindo no depósito")
+
+    assert result.needs_clarification
+    assert "segurança" in result.clarification_question
+
+
+def test_generative_organizer_does_not_send_category_context_to_model() -> None:
+    client = FakeGenerativeClient(
+        {
+            "status": "organized",
+            "organized_text": "Estou com um problema grave de nota.",
+            "clarification_question": "",
+            "confidence": 0.9,
+        }
+    )
+    organizer = GenerativeDescriptionOrganizer(
+        client=client,
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description(
+        "estou com um problema grave de nota",
+        category_name="Outro",
+    )
+
+    assert result.is_organized
+    assert "categoria" not in client.user_prompt.casefold()
+
+
+def test_generative_organizer_rejects_category_leak() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": (
+                    "O usuário está com um problema grave de nota, "
+                    "mas não foi informado na categoria."
+                ),
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = organizer.organize_ticket_description(
+        "estou com um problema grave de nota"
     )
 
     assert result.needs_clarification

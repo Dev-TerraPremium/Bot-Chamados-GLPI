@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from app.application_config.settings import AppSettings
 from app.conversation_engine.conversation_flow_controller import (
     ConversationFlowController,
 )
@@ -26,6 +27,7 @@ class FakeDescriptionOrganizer:
 
 def test_main_menu_rejects_text_when_choice_is_required() -> None:
     controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=False),
         description_organizer=FakeDescriptionOrganizer()
     )
     session_id = str(uuid4())
@@ -39,6 +41,7 @@ def test_main_menu_rejects_text_when_choice_is_required() -> None:
 
 def test_category_assignment_rejects_unavailable_choice() -> None:
     controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=False),
         description_organizer=FakeDescriptionOrganizer()
     )
     session_id = str(uuid4())
@@ -54,6 +57,7 @@ def test_category_assignment_rejects_unavailable_choice() -> None:
 
 def test_location_requires_text_not_menu_number() -> None:
     controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=False),
         description_organizer=FakeDescriptionOrganizer()
     )
     session_id = str(uuid4())

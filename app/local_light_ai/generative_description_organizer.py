@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 from typing import Any, Protocol
 
 import httpx
@@ -18,6 +20,38 @@ class LocalGenerativeClient(Protocol):
         options: dict[str, Any],
     ) -> dict[str, Any]:
         pass
+
+
+class MockLocalGenerativeClient:
+    def generate_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        user_text_prefix = "Texto original do usuário:"
+        user_text = user_prompt.split(user_text_prefix, maxsplit=1)[-1]
+        user_text = user_text.split("Organize somente o texto original.", maxsplit=1)[0]
+        normalized_text = " ".join(user_text.strip().split())
+        if not normalized_text:
+            return {
+                "status": "needs_clarification",
+                "organized_text": "",
+                "clarification_question": (
+                    "Pode descrever o problema ou solicitação em uma frase curta?"
+                ),
+                "confidence": 0.0,
+            }
+
+        if not normalized_text.endswith((".", "!", "?")):
+            normalized_text += "."
+
+        return {
+            "status": "organized",
+            "organized_text": normalized_text[0].upper() + normalized_text[1:],
+            "clarification_question": "",
+            "confidence": 0.99,
+        }
 
 
 class OllamaLocalGenerativeClient:
@@ -118,10 +152,12 @@ class GenerativeDescriptionOrganizer:
                 "num_predict": self.num_predict,
             },
         )
-        return self._normalize_model_payload(model_payload)
+        return self._normalize_model_payload(model_payload, user_text)
 
     def _normalize_model_payload(
-        self, model_payload: dict[str, Any]
+        self,
+        model_payload: dict[str, Any],
+        source_text: str = "",
     ) -> DescriptionOrganizationResult:
         status = str(model_payload.get("status", "")).strip()
         if status not in {"organized", "needs_clarification"}:
@@ -147,7 +183,8 @@ class GenerativeDescriptionOrganizer:
                 "Pode resumir o problema em uma frase?"
             )
         if status == "organized" and self._organized_text_looks_unsafe(
-            organized_text
+            organized_text,
+            source_text,
         ):
             status = "needs_clarification"
             organized_text = ""
@@ -169,22 +206,71 @@ class GenerativeDescriptionOrganizer:
         )
 
     @staticmethod
-    def _organized_text_looks_unsafe(organized_text: str) -> bool:
-        normalized = organized_text.casefold()
+    def _organized_text_looks_unsafe(
+        organized_text: str,
+        source_text: str = "",
+    ) -> bool:
+        normalized = GenerativeDescriptionOrganizer._normalize_text(organized_text)
+        normalized_source = GenerativeDescriptionOrganizer._normalize_text(source_text)
         unsafe_fragments = (
             "nao foi identificado",
             "não foi identificado",
             "nao identificado",
             "não identificado",
+            "foi identificado",
+            "identificado e resolvido",
+            "nao foi informado",
+            "não foi informado",
+            "nao foi inclus",
+            "não foi inclus",
             "nao foi possivel identificar",
             "não foi possível identificar",
+            "foi resolvido",
+            "foi causada",
+            "foi causado",
+            "é causada",
+            "é causado",
+            "e causada",
+            "e causado",
+            "causado por",
+            "causada por",
             "causa provável",
             "provavelmente",
+            "pode indicar",
+            "pode ser",
+            "talvez",
+            "sugere ",
+            "sugerindo",
+            "indicando",
             "deve ser",
             "realize ",
             "para o equipamento",
         )
-        return any(fragment in normalized for fragment in unsafe_fragments)
+        if any(fragment in normalized for fragment in unsafe_fragments):
+            return True
+
+        unsupported_terms = (
+            "categoria",
+            "sistema",
+            "interface",
+            "configurado",
+            "funcionamento",
+            "ativo",
+            "falha tecnica",
+            "falhas tecnicas",
+        )
+        return any(
+            term in normalized and term not in normalized_source
+            for term in unsupported_terms
+        )
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text.casefold())
+        normalized = "".join(
+            char for char in normalized if not unicodedata.combining(char)
+        )
+        return re.sub(r"\s+", " ", normalized).strip()
 
     @staticmethod
     def _build_system_prompt() -> str:
@@ -231,13 +317,10 @@ class GenerativeDescriptionOrganizer:
         category_name: str | None,
         purpose: str,
     ) -> str:
-        category = category_name or "Não informada"
         return (
-            f"Finalidade: {purpose}\n"
-            f"Categoria informada pelo fluxo: {category}\n"
             f"Texto original do usuário: {user_text}\n\n"
-            "Organize somente o texto original. Use a categoria apenas como contexto "
-            "leve para entender termos, não para inventar informações.\n"
+            "Organize somente o texto original. Não mencione estado do fluxo, "
+            "perguntas internas ou dados ausentes.\n"
             "Se o texto já estiver claro, apenas corrija pontuação e pequenos erros.\n\n"
             "Retorne JSON neste formato exato:\n"
             "{\n"
@@ -252,14 +335,20 @@ class GenerativeDescriptionOrganizer:
 def build_generative_description_organizer(
     settings: AppSettings,
 ) -> GenerativeDescriptionOrganizer:
-    client = OllamaLocalGenerativeClient(
-        base_url=settings.ollama_base_url,
-        model=settings.local_generative_model,
-        timeout_seconds=settings.local_generative_timeout_seconds,
-    )
+    if settings.local_light_ai_mode.casefold() == "mock":
+        client = MockLocalGenerativeClient()
+        backend_name = "mock-local-ai"
+    else:
+        client = OllamaLocalGenerativeClient(
+            base_url=settings.ollama_base_url,
+            model=settings.local_generative_model,
+            timeout_seconds=settings.local_generative_timeout_seconds,
+        )
+        backend_name = f"ollama:{settings.local_generative_model}"
+
     return GenerativeDescriptionOrganizer(
         client=client,
-        backend_name=f"ollama:{settings.local_generative_model}",
+        backend_name=backend_name,
         max_input_chars=settings.ai_max_input_chars,
         max_output_chars=settings.ai_max_output_chars,
         num_predict=settings.ai_ollama_num_predict,

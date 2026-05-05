@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.authentication_and_identity.authenticated_user_model import AuthenticatedUser
@@ -18,6 +18,8 @@ class ConversationContext:
     pending_category_suggestion_name: str | None = None
     original_description: str | None = None
     organized_description: str | None = None
+    description_clarification_question: str | None = None
+    description_clarification_turns: list[dict[str, str]] = field(default_factory=list)
     impact_id: int | None = None
     impact_label: str | None = None
     severity: str | None = None
@@ -37,6 +39,7 @@ class ConversationContext:
         self.pending_category_suggestion_name = None
         self.original_description = None
         self.organized_description = None
+        self.reset_description_clarification()
         self.impact_id = None
         self.impact_label = None
         self.severity = None
@@ -51,6 +54,10 @@ class ConversationContext:
         self.complement_original_text = None
         self.complement_rewritten_text = None
 
+    def reset_description_clarification(self) -> None:
+        self.description_clarification_question = None
+        self.description_clarification_turns.clear()
+
     def move_to_main_menu(self) -> None:
         self.reset_ticket_draft()
         self.state = ConversationState.MAIN_MENU
@@ -64,6 +71,9 @@ class ConversationContext:
             "opening_mode": self.opening_mode,
             "selected_category_id": self.selected_category_id,
             "selected_category_name": self.selected_category_name,
+            "description_clarification_count": len(
+                self.description_clarification_turns
+            ),
             "impact_id": self.impact_id,
             "impact_label": self.impact_label,
             "severity": self.severity,

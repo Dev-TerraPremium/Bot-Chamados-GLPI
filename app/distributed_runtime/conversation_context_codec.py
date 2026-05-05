@@ -20,6 +20,10 @@ class ConversationContextCodec:
             "pending_category_suggestion_name": context.pending_category_suggestion_name,
             "original_description": context.original_description,
             "organized_description": context.organized_description,
+            "description_clarification_question": (
+                context.description_clarification_question
+            ),
+            "description_clarification_turns": context.description_clarification_turns,
             "impact_id": context.impact_id,
             "impact_label": context.impact_label,
             "severity": context.severity,
@@ -52,6 +56,17 @@ class ConversationContextCodec:
             pending_category_suggestion_name=data.get("pending_category_suggestion_name"),
             original_description=data.get("original_description"),
             organized_description=data.get("organized_description"),
+            description_clarification_question=data.get(
+                "description_clarification_question"
+            ),
+            description_clarification_turns=[
+                {
+                    "question": str(turn.get("question", "")),
+                    "answer": str(turn.get("answer", "")),
+                }
+                for turn in data.get("description_clarification_turns", [])
+                if isinstance(turn, dict)
+            ],
             impact_id=data.get("impact_id"),
             impact_label=data.get("impact_label"),
             severity=data.get("severity"),

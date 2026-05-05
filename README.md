@@ -85,6 +85,48 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 No Windows, `--pool=solo` evita problemas de fork. Em Linux/container, o pool pode ser ajustado conforme CPU e memória.
 
+## Rodar com Docker
+
+Para validar a stack completa com Redis e workers Celery sem depender de GLPI real ou Ollama real:
+
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs -f web worker-ai worker-glpi
+```
+
+O arquivo [`.env.docker`](/Users/paletotcode/Documents/Bot-Chamados-GLPI/.env.docker) sobe a aplicação com Redis/Celery e IA local real via Ollama no host:
+
+- `STATE_BACKEND=redis`
+- `USE_CELERY_WORKERS=true`
+- `GLPI_INTEGRATION_MODE=mock`
+- `LOCAL_LIGHT_AI_MODE=generative_ollama`
+- `OLLAMA_BASE_URL=http://host.docker.internal:11434`
+- `LOCAL_GENERATIVE_MODEL=hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`
+- `AI_GUIDED_DETAILING_ENABLED=true`
+- `AI_MAX_CLARIFICATION_QUESTIONS=5`
+
+Isso força o caminho completo de filas sem depender de GLPI real. O worker GLPI roda em `glpi_io`, o worker de IA em `ai_local`, e o modelo generativo roda localmente no host via Ollama. Quando a descrição inicial estiver vaga, a IA pode fazer até 5 perguntas curtas, uma por vez, antes de sugerir a categoria.
+
+Healthchecks úteis:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/runtime
+```
+
+Smoke test automatizado:
+
+```bash
+python scripts/docker_smoke_test.py
+```
+
+Encerramento:
+
+```bash
+docker compose down
+```
+
 ## Testes
 
 ```bash
@@ -163,6 +205,8 @@ Parametrizacao:
 - `OLLAMA_BASE_URL=http://127.0.0.1:11434`
 - `LOCAL_GENERATIVE_MODEL=hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`
 - `LOCAL_GENERATIVE_TIMEOUT_SECONDS=30`
+- `AI_GUIDED_DETAILING_ENABLED=true`
+- `AI_MAX_CLARIFICATION_QUESTIONS=5`
 - `AI_MAX_INPUT_CHARS=1000`
 - `AI_MAX_OUTPUT_CHARS=800`
 - `AI_OLLAMA_NUM_PREDICT=180`
@@ -423,7 +467,7 @@ Para manter a experiencia de chat fluida, a implementacao deve preferir aguardar
 
 ### Fase 6: IA local com limite de consumo e seguranca
 
-Manter o modelo local via Ollama, sem memoria e sem historico persistente.
+Manter o modelo local via Ollama, sem memoria longa e sem historico persistente fora da sessao. Para detalhamento guiado, a aplicacao guarda apenas uma memoria curta de perguntas/respostas no contexto Redis da conversa.
 
 Itens:
 

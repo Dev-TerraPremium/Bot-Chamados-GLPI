@@ -1,17 +1,21 @@
 import hashlib
 import json
 import logging
+import re
+import unicodedata
 from uuid import uuid4
 
 from app.application_config.settings import AppSettings, load_settings
 from app.authentication_and_identity.simulated_auth_service import SimulatedAuthService
 from app.background_jobs.celery_description_organizer import CeleryDescriptionOrganizer
+from app.background_jobs.celery_ticket_detailer import CeleryTicketDetailer
 from app.conversation_engine.conversation_context import ConversationContext
 from app.conversation_engine.conversation_input_parser import ConversationInputParser
 from app.conversation_engine.conversation_menu_validator import ConversationMenuValidator
 from app.conversation_engine.conversation_messages import (
     build_category_assignment_message,
     build_complement_review_message,
+    build_description_clarification_message,
     build_description_review_message,
     build_evidence_question,
     build_invalid_option_message,
@@ -35,12 +39,14 @@ from app.glpi_integration_reserved.glpi_ticket_payload_builder import (
 )
 from app.local_light_ai.description_organization_models import (
     DescriptionOrganizationResult,
+    GuidedDetailingResult,
     LocalGenerativeAIUnavailableError,
 )
 from app.local_light_ai.generative_description_organizer import (
     GenerativeDescriptionOrganizer,
     build_generative_description_organizer,
 )
+from app.local_light_ai.guided_ticket_detailer import build_guided_ticket_detailer
 from app.security_and_abuse_protection.input_sanitizer import InputSanitizer
 from app.security_and_abuse_protection.message_size_limiter import MessageSizeLimiter
 from app.security_and_abuse_protection.suspicious_input_detector import (
@@ -72,6 +78,7 @@ class ConversationFlowController:
         ticket_store: InMemoryTicketStore | None = None,
         glpi_client=None,
         description_organizer: GenerativeDescriptionOrganizer | None = None,
+        description_detailer=None,
         rate_limiter=None,
         session_lock=None,
         idempotency_store=None,
@@ -112,6 +119,13 @@ class ConversationFlowController:
             if self.settings.use_celery_workers
             else build_generative_description_organizer(self.settings)
         )
+        self.description_detailer = None
+        if self.settings.ai_guided_detailing_enabled:
+            self.description_detailer = description_detailer or (
+                CeleryTicketDetailer(self.settings)
+                if self.settings.use_celery_workers
+                else build_guided_ticket_detailer(self.settings)
+            )
 
     def process_message(
         self,
@@ -224,6 +238,9 @@ class ConversationFlowController:
         handlers = {
             ConversationState.MAIN_MENU: self._handle_main_menu,
             ConversationState.DESCRIPTION_COLLECTION: self._handle_description,
+            ConversationState.DESCRIPTION_CLARIFICATION: (
+                self._handle_description_clarification
+            ),
             ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION: (
                 self._handle_category_assignment_confirmation
             ),
@@ -292,39 +309,84 @@ class ConversationFlowController:
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
         context.original_description = message
-        organization = self._organize_description(
-            context,
-            message,
-            purpose="descricao_chamado",
-        )
-        if organization.needs_clarification:
-            return self._result(context, organization.clarification_question)
+        context.organized_description = None
+        context.reset_description_clarification()
 
-        context.organized_description = organization.organized_text
+        if self.description_detailer is not None:
+            detailing = self._detail_description(context)
+            if detailing is not None and detailing.asks_next:
+                context.description_clarification_question = detailing.next_question
+                self.state_machine.transition_to(
+                    context,
+                    ConversationState.DESCRIPTION_CLARIFICATION,
+                )
+                return self._result(
+                    context,
+                    build_description_clarification_message(
+                        detailing.next_question,
+                        len(context.description_clarification_turns) + 1,
+                        self.settings.ai_max_clarification_questions,
+                    ),
+                )
+            if detailing is not None and detailing.is_ready:
+                return self._finalize_guided_description(
+                    context,
+                    self._build_detailing_source_text(context),
+                )
 
-        if context.selected_category_id:
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
+        return self._finalize_direct_description(context, message)
+
+    def _handle_description_clarification(
+        self, context: ConversationContext, message: str
+    ) -> ConversationTurnResult:
+        if self._is_skip_detailing_response(message):
+            return self._finalize_guided_description(
                 context,
-                build_description_review_message(context.organized_description),
+                self._build_detailing_source_text(context),
             )
 
-        category_match = self.category_matching_service.find_best_match(
-            organization.organized_text or message
+        current_question = (
+            context.description_clarification_question
+            or "Qual equipamento, sistema ou serviço está afetado?"
         )
-        context.pending_category_suggestion_id = category_match.category_id
-        context.pending_category_suggestion_name = category_match.category_name
-        self.state_machine.transition_to(
-            context,
-            ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION,
+        context.description_clarification_turns.append(
+            {"question": current_question, "answer": message}
         )
-        return self._result(
+        context.description_clarification_question = None
+
+        if (
+            len(context.description_clarification_turns)
+            >= self.settings.ai_max_clarification_questions
+        ):
+            return self._finalize_guided_description(
+                context,
+                self._build_detailing_source_text(context),
+            )
+
+        detailing = self._detail_description(context)
+        if detailing is not None and detailing.asks_next:
+            context.description_clarification_question = detailing.next_question
+            self.state_machine.transition_to(
+                context,
+                ConversationState.DESCRIPTION_CLARIFICATION,
+            )
+            return self._result(
+                context,
+                build_description_clarification_message(
+                    detailing.next_question,
+                    len(context.description_clarification_turns) + 1,
+                    self.settings.ai_max_clarification_questions,
+                ),
+            )
+        if detailing is not None and detailing.is_ready:
+            return self._finalize_guided_description(
+                context,
+                self._build_detailing_source_text(context),
+            )
+
+        return self._finalize_guided_description(
             context,
-            build_category_assignment_message(
-                context.organized_description,
-                category_match.category_id,
-                category_match.category_name,
-            ),
+            self._build_detailing_source_text(context),
         )
 
     def _handle_category_assignment_confirmation(
@@ -352,10 +414,7 @@ class ConversationFlowController:
                 build_description_review_message(context.organized_description or ""),
             )
         if validation.choice == 4:
-            context.original_description = None
-            context.organized_description = None
-            context.pending_category_suggestion_id = None
-            context.pending_category_suggestion_name = None
+            self._reset_description_for_rewrite(context)
             self.state_machine.transition_to(
                 context,
                 ConversationState.DESCRIPTION_COLLECTION,
@@ -438,6 +497,7 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.IMPACT_SELECTION)
             return self._result(context, render_impact_menu())
         if validation.choice == 2:
+            self._reset_description_for_rewrite(context)
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_COLLECTION)
             return self._result(context, build_open_ticket_prompt())
         if validation.choice == 3:
@@ -764,6 +824,221 @@ class ConversationFlowController:
             + build_main_menu(context.user),
             created_ticket=created_ticket_data,
         )
+
+    def _finalize_direct_description(
+        self,
+        context: ConversationContext,
+        message: str,
+    ) -> ConversationTurnResult:
+        organization = self._organize_description(
+            context,
+            message,
+            purpose="descricao_chamado",
+        )
+        if organization.needs_clarification:
+            return self._result(context, organization.clarification_question)
+        return self._advance_from_organized_description(
+            context,
+            organization.organized_text,
+            category_source_text=organization.organized_text or message,
+        )
+
+    def _finalize_guided_description(
+        self,
+        context: ConversationContext,
+        source_text: str,
+    ) -> ConversationTurnResult:
+        source_text = source_text.strip() or context.original_description or ""
+        organization = self._organize_description(
+            context,
+            source_text,
+            purpose="descricao_chamado_detalhada",
+        )
+        organized_text = (
+            organization.organized_text
+            if organization.is_organized
+            else source_text
+        )
+        organized_text = self._preserve_guided_user_markers(context, organized_text)
+        if not organized_text:
+            self.state_machine.transition_to(
+                context,
+                ConversationState.DESCRIPTION_COLLECTION,
+            )
+            return self._result(
+                context,
+                "Não consegui montar a descrição. Pode explicar novamente o que precisa?",
+            )
+        return self._advance_from_organized_description(
+            context,
+            organized_text,
+            category_source_text=organized_text,
+        )
+
+    def _advance_from_organized_description(
+        self,
+        context: ConversationContext,
+        organized_text: str,
+        category_source_text: str,
+    ) -> ConversationTurnResult:
+        context.organized_description = organized_text
+        context.description_clarification_question = None
+
+        if context.selected_category_id:
+            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+            return self._result(
+                context,
+                build_description_review_message(context.organized_description),
+            )
+
+        category_match = self.category_matching_service.find_best_match(
+            category_source_text
+        )
+        context.pending_category_suggestion_id = category_match.category_id
+        context.pending_category_suggestion_name = category_match.category_name
+        self.state_machine.transition_to(
+            context,
+            ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION,
+        )
+        return self._result(
+            context,
+            build_category_assignment_message(
+                context.organized_description,
+                category_match.category_id,
+                category_match.category_name,
+            ),
+        )
+
+    def _detail_description(
+        self,
+        context: ConversationContext,
+    ) -> GuidedDetailingResult | None:
+        if self.description_detailer is None:
+            return None
+        try:
+            return self.description_detailer.detail_ticket_description(
+                original_description=context.original_description or "",
+                clarification_turns=context.description_clarification_turns,
+                category_name=context.selected_category_name,
+                max_questions=self.settings.ai_max_clarification_questions,
+            )
+        except LocalGenerativeAIUnavailableError:
+            logger.exception(
+                "local_guided_detailing_unavailable",
+                extra={"session_id": context.session_id, "state": context.state.value},
+            )
+            return None
+
+    def _build_detailing_source_text(self, context: ConversationContext) -> str:
+        original_description = self._clip_text(context.original_description or "", 400)
+        answers = [
+            self._clip_text(turn.get("answer", ""), 240)
+            for turn in context.description_clarification_turns
+            if self._clip_text(turn.get("answer", ""), 240)
+        ]
+        if answers and self._original_description_is_generic_for_summary(
+            original_description
+        ):
+            parts = answers
+        else:
+            parts = [original_description]
+            parts.extend(answers)
+        source_text = ". ".join(part.strip(" .") for part in parts if part.strip())
+        if source_text and not source_text.endswith((".", "!", "?")):
+            source_text += "."
+        return source_text
+
+    def _reset_description_for_rewrite(self, context: ConversationContext) -> None:
+        context.original_description = None
+        context.organized_description = None
+        context.pending_category_suggestion_id = None
+        context.pending_category_suggestion_name = None
+        context.reset_description_clarification()
+
+    def _is_skip_detailing_response(self, message: str) -> bool:
+        normalized = self._normalize_control_text(message)
+        skip_responses = {
+            "nao sei",
+            "nao sei informar",
+            "nao tenho",
+            "nao tenho essa informacao",
+            "pular",
+            "prosseguir",
+            "continuar",
+        }
+        return normalized in skip_responses
+
+    def _original_description_is_generic_for_summary(self, text: str) -> bool:
+        normalized = self._normalize_control_text(text)
+        generic_issue = bool(
+            re.search(
+                r"\b(problema|erro|dificuldade)(?:\s+\w+){0,3}\s+"
+                r"(de|do|da|dos|das|no|na|nos|nas|com|em)\b",
+                normalized,
+            )
+        )
+        detail_markers = (
+            "quando",
+            "ao ",
+            "aparece",
+            "mensagem",
+            "salvar",
+            "emitir",
+            "abrir",
+            "acessar",
+            "imprimir",
+            "iniciar",
+            "travando",
+            "caindo",
+            "lento",
+            "bloqueado",
+            "sem ",
+        )
+        return generic_issue and not any(marker in normalized for marker in detail_markers)
+
+    def _preserve_guided_user_markers(
+        self,
+        context: ConversationContext,
+        organized_text: str,
+    ) -> str:
+        severity_label = self._severity_marker_label(context.original_description or "")
+        if not severity_label:
+            return organized_text
+
+        normalized_text = self._normalize_control_text(organized_text)
+        if self._normalize_control_text(severity_label) in normalized_text:
+            return organized_text
+
+        suffix = f"O usuário relatou que o problema é {severity_label}."
+        if organized_text.endswith((".", "!", "?")):
+            return f"{organized_text} {suffix}"
+        return f"{organized_text}. {suffix}"
+
+    def _severity_marker_label(self, text: str) -> str:
+        normalized = self._normalize_control_text(text)
+        if "critico" in normalized or "critica" in normalized:
+            return "crítico"
+        if "urgente" in normalized:
+            return "urgente"
+        if "grave" in normalized:
+            return "grave"
+        return ""
+
+    @staticmethod
+    def _clip_text(text: str, max_chars: int) -> str:
+        text = " ".join(text.split())
+        if len(text) <= max_chars:
+            return text
+        return text[: max_chars - 3].rstrip() + "..."
+
+    @staticmethod
+    def _normalize_control_text(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text.casefold())
+        normalized = "".join(
+            char for char in normalized if not unicodedata.combining(char)
+        )
+        normalized = re.sub(r"[^\w\s]", " ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
 
     def _organize_description(
         self,

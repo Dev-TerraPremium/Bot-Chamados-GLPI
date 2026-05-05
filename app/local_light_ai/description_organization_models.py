@@ -18,6 +18,22 @@ class DescriptionOrganizationResult:
         return self.status == "needs_clarification"
 
 
+@dataclass(frozen=True, slots=True)
+class GuidedDetailingResult:
+    status: str
+    next_question: str
+    organized_text: str
+    confidence: float
+    backend: str
+
+    @property
+    def asks_next(self) -> bool:
+        return self.status == "ask_next" and bool(self.next_question.strip())
+
+    @property
+    def is_ready(self) -> bool:
+        return self.status == "ready"
+
+
 class LocalGenerativeAIUnavailableError(RuntimeError):
     """Raised when the local generative runtime cannot be reached."""
-
