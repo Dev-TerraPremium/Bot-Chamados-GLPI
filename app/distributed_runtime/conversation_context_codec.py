@@ -1,0 +1,65 @@
+from typing import Any
+
+from app.authentication_and_identity.authenticated_user_model import AuthenticatedUser
+from app.conversation_engine.conversation_context import ConversationContext
+from app.conversation_engine.conversation_states import ConversationState
+
+
+class ConversationContextCodec:
+    @staticmethod
+    def to_dict(context: ConversationContext) -> dict[str, Any]:
+        return {
+            "session_id": context.session_id,
+            "channel": context.channel,
+            "user": context.user.to_safe_dict(),
+            "state": context.state.value,
+            "opening_mode": context.opening_mode,
+            "selected_category_id": context.selected_category_id,
+            "selected_category_name": context.selected_category_name,
+            "pending_category_suggestion_id": context.pending_category_suggestion_id,
+            "pending_category_suggestion_name": context.pending_category_suggestion_name,
+            "original_description": context.original_description,
+            "organized_description": context.organized_description,
+            "impact_id": context.impact_id,
+            "impact_label": context.impact_label,
+            "severity": context.severity,
+            "location": context.location,
+            "evidence": context.evidence,
+            "suggested_title": context.suggested_title,
+            "ticket_preview": context.ticket_preview,
+            "ticket_to_complement_id": context.ticket_to_complement_id,
+            "complement_original_text": context.complement_original_text,
+            "complement_rewritten_text": context.complement_rewritten_text,
+        }
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> ConversationContext:
+        user_data = data["user"]
+        return ConversationContext(
+            session_id=str(data["session_id"]),
+            channel=str(data["channel"]),
+            user=AuthenticatedUser(
+                full_name=str(user_data["full_name"]),
+                login=str(user_data["login"]),
+                email=str(user_data["email"]),
+                glpi_user_id=int(user_data["glpi_user_id"]),
+            ),
+            state=ConversationState(str(data["state"])),
+            opening_mode=data.get("opening_mode"),
+            selected_category_id=data.get("selected_category_id"),
+            selected_category_name=data.get("selected_category_name"),
+            pending_category_suggestion_id=data.get("pending_category_suggestion_id"),
+            pending_category_suggestion_name=data.get("pending_category_suggestion_name"),
+            original_description=data.get("original_description"),
+            organized_description=data.get("organized_description"),
+            impact_id=data.get("impact_id"),
+            impact_label=data.get("impact_label"),
+            severity=data.get("severity"),
+            location=data.get("location"),
+            evidence=data.get("evidence"),
+            suggested_title=data.get("suggested_title"),
+            ticket_preview=data.get("ticket_preview"),
+            ticket_to_complement_id=data.get("ticket_to_complement_id"),
+            complement_original_text=data.get("complement_original_text"),
+            complement_rewritten_text=data.get("complement_rewritten_text"),
+        )

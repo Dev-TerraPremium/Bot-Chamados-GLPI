@@ -126,7 +126,7 @@ def get_category_by_name(category_name: str) -> CategoryOption | None:
 
 
 def render_category_menu() -> str:
-    lines = ["📚 **Escolha uma categoria:**"]
+    lines = ["📚 **Escolha a categoria manualmente:**"]
     lines.extend(
         f"{category.id}. {CATEGORY_ICONS_BY_ID[category.id]} **{category.name}**"
         for category in CATEGORY_OPTIONS

@@ -33,6 +33,15 @@ class TicketFollowup:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "TicketFollowup":
+        return cls(
+            ticket_number=int(data["ticket_number"]),
+            user_id=int(data["user_id"]),
+            content=str(data["content"]),
+            created_at=str(data["created_at"]),
+        )
+
 
 @dataclass(slots=True)
 class TicketCreated:
@@ -57,6 +66,30 @@ class TicketCreated:
         data["followups"] = [followup.to_dict() for followup in self.followups]
         return data
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "TicketCreated":
+        followups = [
+            TicketFollowup.from_dict(followup)
+            for followup in data.get("followups", [])
+        ]
+        return cls(
+            ticket_number=int(data["ticket_number"]),
+            title=str(data["title"]),
+            status=str(data["status"]),
+            severity=str(data["severity"]),
+            description=str(data["description"]),
+            category_name=str(data["category_name"]),
+            requester_login=str(data["requester_login"]),
+            glpi_user_id=int(data["glpi_user_id"]),
+            channel=str(data["channel"]),
+            location=str(data["location"]),
+            impact_label=str(data["impact_label"]),
+            evidence=str(data["evidence"]),
+            opening_mode=str(data["opening_mode"]),
+            created_at=str(data["created_at"]),
+            followups=followups,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class TicketSummary:
@@ -72,4 +105,3 @@ class TicketSummary:
 
     def to_dict(self) -> dict:
         return asdict(self)
-

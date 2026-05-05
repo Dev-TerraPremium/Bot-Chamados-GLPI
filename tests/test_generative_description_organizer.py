@@ -40,14 +40,14 @@ def test_generative_organizer_can_request_clarification() -> None:
             {
                 "status": "needs_clarification",
                 "organized_text": "",
-                "clarification_question": "Pode explicar qual equipamento ou acesso voce precisa?",
+                "clarification_question": "Pode explicar qual equipamento ou acesso você precisa?",
                 "confidence": 0.31,
             }
         ),
         backend_name="fake-generative",
     )
 
-    result = organizer.organize_ticket_description("frase que nao tem sentido")
+    result = organizer.organize_ticket_description("frase que não tem sentido")
 
     assert result.needs_clarification
     assert "explicar" in result.clarification_question
@@ -72,6 +72,29 @@ def test_generative_organizer_rejects_invented_negative_diagnosis() -> None:
 
     assert result.needs_clarification
     assert "segurança" in result.clarification_question
+
+
+def test_generative_organizer_limits_input_and_output() -> None:
+    organizer = GenerativeDescriptionOrganizer(
+        client=FakeGenerativeClient(
+            {
+                "status": "organized",
+                "organized_text": "x" * 50,
+                "clarification_question": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+        max_input_chars=10,
+        max_output_chars=20,
+    )
+
+    input_result = organizer.organize_ticket_description("x" * 11)
+    assert input_result.needs_clarification
+
+    organizer.max_input_chars = 100
+    output_result = organizer.organize_ticket_description("texto curto")
+    assert output_result.needs_clarification
 
 
 def test_system_prompt_guides_broken_desktop_text() -> None:

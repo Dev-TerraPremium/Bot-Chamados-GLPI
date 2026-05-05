@@ -38,5 +38,4 @@ class TicketStatus(str, Enum):
 
 
 class TicketOpeningMode(str, Enum):
-    QUICK = "Chamado rápido"
-    DETAILED = "Chamado detalhado"
+    ASSISTED = "Abertura assistida"

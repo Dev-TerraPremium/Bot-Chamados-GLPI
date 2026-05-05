@@ -7,19 +7,37 @@ def build_main_menu(user: AuthenticatedUser) -> str:
         f"Você está autenticado como **{user.login}**.\n\n"
         "🌾 **Terra Premium | Assistente de Chamados TI**\n"
         "Como posso te ajudar hoje?\n\n"
-        "1. 🆕 **Abrir novo chamado**\n"
+        "1. 🆕 **Abrir chamado**\n"
         "2. 🔎 **Consultar meus chamados**\n"
         "3. 📝 **Complementar chamado existente**\n"
         "4. 🚪 **Sair**"
     )
 
 
-def build_opening_mode_menu() -> str:
+def build_open_ticket_prompt() -> str:
     return (
-        "🧭 **Escolha o tipo de abertura:**\n\n"
-        "1. ⚡ **Chamado rápido**\n"
-        "2. 📋 **Chamado detalhado**\n"
-        "3. ↩️ **Voltar ao menu**"
+        "🆕 **Vamos abrir seu chamado.**\n\n"
+        "Descreva em poucas palavras o que aconteceu ou o que você precisa.\n"
+        "Eu vou organizar o texto e sugerir a categoria automaticamente.\n\n"
+        "Você poderá confirmar a categoria sugerida ou escolher outra manualmente."
+    )
+
+
+def build_category_assignment_message(
+    organized_text: str,
+    category_id: int,
+    category_name: str,
+) -> str:
+    return (
+        "🤖 **Organizei sua solicitação e encontrei uma categoria provável:**\n\n"
+        f"📝 **Descrição organizada:** {organized_text}\n\n"
+        f"📚 **Categoria sugerida:** {category_id}. **{category_name}**\n\n"
+        "Como deseja seguir?\n\n"
+        "1. ✅ **Usar essa categoria**\n"
+        "2. 📚 **Escolher categoria manualmente**\n"
+        "3. 🧰 **Manter como Outro**\n"
+        "4. ✍️ **Reescrever descrição**\n"
+        "5. ❌ **Cancelar chamado**"
     )
 
 
@@ -35,12 +53,15 @@ def build_query_menu() -> str:
 
 
 def build_invalid_option_message() -> str:
-    return "⚠️ Não entendi a opção. Responda apenas com o **número** de uma das opções."
+    return (
+        "⚠️ Não entendi a opção. Responda apenas com o **número** "
+        "de uma das opções exibidas."
+    )
 
 
 def build_description_review_message(organized_text: str) -> str:
     return (
-        "🤖 **Organizei sua solicitação assim:**\n\n"
+        "🤖 **Descrição final do chamado:**\n\n"
         f"{organized_text}\n\n"
         "Está correto?\n\n"
         "1. ✅ **Sim, continuar**\n"

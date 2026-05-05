@@ -32,8 +32,6 @@ def test_description_collection_asks_for_clarification_when_text_is_broken() -> 
 
     controller.process_message(session_id, "__start__")
     controller.process_message(session_id, "1")
-    controller.process_message(session_id, "2")
-    controller.process_message(session_id, "9")
     result = controller.process_message(
         session_id,
         "Preciso realizar um desktopi nov para mim",
@@ -41,4 +39,3 @@ def test_description_collection_asks_for_clarification_when_text_is_broken() -> 
 
     assert result.state == "description_collection"
     assert "explicar melhor" in result.bot_message
-

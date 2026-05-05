@@ -1,23 +1,35 @@
+import hashlib
+import json
 import logging
 from uuid import uuid4
 
 from app.application_config.settings import AppSettings, load_settings
 from app.authentication_and_identity.simulated_auth_service import SimulatedAuthService
+from app.background_jobs.celery_description_organizer import CeleryDescriptionOrganizer
 from app.conversation_engine.conversation_context import ConversationContext
 from app.conversation_engine.conversation_input_parser import ConversationInputParser
+from app.conversation_engine.conversation_menu_validator import ConversationMenuValidator
 from app.conversation_engine.conversation_messages import (
+    build_category_assignment_message,
     build_complement_review_message,
     build_description_review_message,
     build_evidence_question,
     build_invalid_option_message,
     build_location_prompt,
     build_main_menu,
-    build_opening_mode_menu,
+    build_open_ticket_prompt,
     build_query_menu,
 )
 from app.conversation_engine.conversation_state_machine import ConversationStateMachine
 from app.conversation_engine.conversation_states import ConversationState
-from app.glpi_integration_reserved.glpi_mock_client import GLPIMockClient
+from app.distributed_runtime.runtime_factory import (
+    build_conversation_store,
+    build_idempotency_store,
+    build_rate_limiter,
+    build_session_lock,
+)
+from app.glpi_integration_reserved.glpi_client_factory import build_glpi_client
+from app.glpi_integration_reserved.glpi_future_real_client import GLPIClientError
 from app.glpi_integration_reserved.glpi_ticket_payload_builder import (
     GLPITicketPayloadBuilder,
 )
@@ -31,25 +43,17 @@ from app.local_light_ai.generative_description_organizer import (
 )
 from app.security_and_abuse_protection.input_sanitizer import InputSanitizer
 from app.security_and_abuse_protection.message_size_limiter import MessageSizeLimiter
-from app.security_and_abuse_protection.simple_rate_limiter import SimpleRateLimiter
 from app.security_and_abuse_protection.suspicious_input_detector import (
     SuspiciousInputDetector,
 )
 from app.security_and_abuse_protection.user_scope_guard import UserScopeGuard
 from app.shared_kernel.constants import DEFAULT_CHANNEL, SECURITY_BLOCK_MESSAGE
 from app.shared_kernel.result_types import ConversationTurnResult
-from app.simulated_persistence.in_memory_conversation_store import (
-    InMemoryConversationStore,
-)
 from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
 from app.ticket_domain.ticket_enums import TicketOpeningMode, TicketStatus
 from app.ticket_domain.ticket_factory import TicketFactory
 from app.ticket_domain.ticket_summary_builder import TicketSummaryBuilder
-from app.triage_rules.category_catalog import (
-    get_category_by_id,
-    render_category_menu,
-    render_description_prompt,
-)
+from app.triage_rules.category_catalog import get_category_by_id, render_category_menu
 from app.triage_rules.category_matching_service import CategoryMatchingService
 from app.triage_rules.impact_catalog import get_impact_by_id, render_impact_menu
 from app.triage_rules.severity_mapping_service import SeverityMappingService
@@ -64,22 +68,33 @@ class ConversationFlowController:
         self,
         settings: AppSettings | None = None,
         auth_service: SimulatedAuthService | None = None,
-        conversation_store: InMemoryConversationStore | None = None,
+        conversation_store=None,
         ticket_store: InMemoryTicketStore | None = None,
-        glpi_client: GLPIMockClient | None = None,
+        glpi_client=None,
         description_organizer: GenerativeDescriptionOrganizer | None = None,
+        rate_limiter=None,
+        session_lock=None,
+        idempotency_store=None,
     ) -> None:
         self.settings = settings or load_settings()
         self.auth_service = auth_service or SimulatedAuthService()
-        self.conversation_store = conversation_store or InMemoryConversationStore()
         self.ticket_store = ticket_store or InMemoryTicketStore()
-        self.glpi_client = glpi_client or GLPIMockClient(self.ticket_store)
+        self.conversation_store = conversation_store or build_conversation_store(
+            self.settings
+        )
+        self.glpi_client = glpi_client or build_glpi_client(
+            self.settings,
+            self.ticket_store,
+        )
         self.parser = ConversationInputParser()
+        self.menu_validator = ConversationMenuValidator(self.parser)
         self.state_machine = ConversationStateMachine()
         self.input_sanitizer = InputSanitizer()
         self.size_limiter = MessageSizeLimiter(self.settings.max_message_length)
-        self.rate_limiter = SimpleRateLimiter(
-            self.settings.rate_limit_messages_per_minute
+        self.rate_limiter = rate_limiter or build_rate_limiter(self.settings)
+        self.session_lock = session_lock or build_session_lock(self.settings)
+        self.idempotency_store = idempotency_store or build_idempotency_store(
+            self.settings
         )
         self.suspicious_detector = SuspiciousInputDetector()
         self.user_scope_guard = UserScopeGuard()
@@ -88,10 +103,14 @@ class ConversationFlowController:
         self.title_generation_service = TitleGenerationService()
         self.ticket_summary_builder = TicketSummaryBuilder()
         self.ticket_factory = TicketFactory()
-        self.glpi_payload_builder = GLPITicketPayloadBuilder()
-        self.description_organizer = (
-            description_organizer
-            or build_generative_description_organizer(self.settings)
+        self.glpi_payload_builder = GLPITicketPayloadBuilder(
+            default_entity_id=self.settings.glpi_default_entity_id,
+            default_requester_user_id=self.settings.glpi_default_requester_user_id,
+        )
+        self.description_organizer = description_organizer or (
+            CeleryDescriptionOrganizer(self.settings)
+            if self.settings.use_celery_workers
+            else build_generative_description_organizer(self.settings)
         )
 
     def process_message(
@@ -101,7 +120,20 @@ class ConversationFlowController:
         channel: str = DEFAULT_CHANNEL,
     ) -> ConversationTurnResult:
         normalized_session_id = session_id.strip() or str(uuid4())
-        context = self._get_or_create_context(normalized_session_id, channel)
+        with self.session_lock.lock(normalized_session_id):
+            return self._process_message_locked(
+                normalized_session_id,
+                message,
+                channel,
+            )
+
+    def _process_message_locked(
+        self,
+        session_id: str,
+        message: str,
+        channel: str,
+    ) -> ConversationTurnResult:
+        context = self._get_or_create_context(session_id, channel)
 
         if self.parser.is_start_message(message):
             return self._result(context, build_main_menu(context.user))
@@ -109,10 +141,12 @@ class ConversationFlowController:
         if self.parser.is_reset_command(message):
             context.move_to_main_menu()
             self.rate_limiter.reset(context.session_id)
+            self.idempotency_store.clear(context.session_id)
             self.conversation_store.save(context)
             return self._result(
                 context,
-                "🔄 **Conversa reiniciada com segurança.**\n\n" + build_main_menu(context.user),
+                "🔄 **Conversa reiniciada com segurança.**\n\n"
+                + build_main_menu(context.user),
             )
 
         if not self.rate_limiter.allow_message(context.session_id):
@@ -138,10 +172,7 @@ class ConversationFlowController:
 
         sanitized_message = self.input_sanitizer.sanitize(message)
         if not sanitized_message:
-            return self._result(
-                context,
-                "Envie uma mensagem com texto para continuar.",
-            )
+            return self._result(context, "Envie uma mensagem com texto para continuar.")
 
         handler = self._get_handler(context.state)
         result = handler(context, sanitized_message)
@@ -156,15 +187,20 @@ class ConversationFlowController:
         self, session_id: str, channel: str = DEFAULT_CHANNEL
     ) -> ConversationTurnResult:
         normalized_session_id = session_id.strip() or str(uuid4())
-        self.conversation_store.delete(normalized_session_id)
-        self.rate_limiter.reset(normalized_session_id)
-        context = self._get_or_create_context(normalized_session_id, channel)
-        return self._result(
-            context,
-            "🔄 **Conversa reiniciada com segurança.**\n\n" + build_main_menu(context.user),
-        )
+        with self.session_lock.lock(normalized_session_id):
+            self.conversation_store.delete(normalized_session_id)
+            self.rate_limiter.reset(normalized_session_id)
+            self.idempotency_store.clear(normalized_session_id)
+            context = self._get_or_create_context(normalized_session_id, channel)
+            return self._result(
+                context,
+                "🔄 **Conversa reiniciada com segurança.**\n\n"
+                + build_main_menu(context.user),
+            )
 
     def debug_session(self, session_id: str) -> dict | None:
+        if not self.settings.expose_debug_routes:
+            return {"detail": "debug_disabled"}
         return self.conversation_store.debug_context(session_id)
 
     def _get_or_create_context(
@@ -187,19 +223,15 @@ class ConversationFlowController:
     def _get_handler(self, state: ConversationState):
         handlers = {
             ConversationState.MAIN_MENU: self._handle_main_menu,
-            ConversationState.OPENING_MODE_SELECTION: self._handle_opening_mode,
-            ConversationState.QUICK_DESCRIPTION_COLLECTION: (
-                self._handle_quick_description
-            ),
-            ConversationState.QUICK_CATEGORY_CONFIRMATION: (
-                self._handle_quick_category_confirmation
+            ConversationState.DESCRIPTION_COLLECTION: self._handle_description,
+            ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION: (
+                self._handle_category_assignment_confirmation
             ),
             ConversationState.CATEGORY_SELECTION: self._handle_category_selection,
             ConversationState.OTHER_CATEGORY_TEXT: self._handle_other_category_text,
             ConversationState.OTHER_CATEGORY_CONFIRMATION: (
                 self._handle_other_category_confirmation
             ),
-            ConversationState.DESCRIPTION_COLLECTION: self._handle_description,
             ConversationState.DESCRIPTION_REVIEW: self._handle_description_review,
             ConversationState.IMPACT_SELECTION: self._handle_impact,
             ConversationState.LOCATION_COLLECTION: self._handle_location,
@@ -222,151 +254,137 @@ class ConversationFlowController:
     def _handle_main_menu(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
-            context.reset_ticket_draft()
-            self.state_machine.transition_to(
-                context, ConversationState.OPENING_MODE_SELECTION
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
+        if not validation.is_valid:
+            return self._result(
+                context,
+                validation.message + "\n\n" + build_main_menu(context.user),
             )
-            return self._result(context, build_opening_mode_menu())
-        if choice == 2:
+
+        if validation.choice == 1:
+            context.reset_ticket_draft()
+            context.opening_mode = TicketOpeningMode.ASSISTED.value
+            self.state_machine.transition_to(
+                context,
+                ConversationState.DESCRIPTION_COLLECTION,
+            )
+            return self._result(context, build_open_ticket_prompt())
+        if validation.choice == 2:
             self.state_machine.transition_to(context, ConversationState.QUERY_MENU)
             return self._result(context, build_query_menu())
-        if choice == 3:
+        if validation.choice == 3:
             self.state_machine.transition_to(
-                context, ConversationState.COMPLEMENT_TICKET_NUMBER
+                context,
+                ConversationState.COMPLEMENT_TICKET_NUMBER,
             )
             return self._result(
                 context,
                 "🔢 Informe o **número do chamado** que deseja complementar.",
             )
-        if choice == 4:
-            self.state_machine.transition_to(context, ConversationState.EXITED)
-            return self._result(
-                context,
-                "🚪 **Sessão encerrada.** Envie qualquer mensagem quando quiser iniciar novamente.",
-            )
+
+        self.state_machine.transition_to(context, ConversationState.EXITED)
         return self._result(
             context,
-            build_invalid_option_message() + "\n\n" + build_main_menu(context.user),
+            "🚪 **Sessão encerrada.** Envie qualquer mensagem quando quiser iniciar novamente.",
         )
 
-    def _handle_opening_mode(
-        self, context: ConversationContext, message: str
-    ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
-            context.reset_ticket_draft()
-            context.opening_mode = TicketOpeningMode.QUICK.value
-            self.state_machine.transition_to(
-                context, ConversationState.QUICK_DESCRIPTION_COLLECTION
-            )
-            return self._result(
-                context,
-                "⚡ Descreva em poucas palavras o problema ou solicitação.",
-            )
-        if choice == 2:
-            context.reset_ticket_draft()
-            context.opening_mode = TicketOpeningMode.DETAILED.value
-            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-            return self._result(context, render_category_menu())
-        if choice == 3:
-            context.move_to_main_menu()
-            return self._result(context, build_main_menu(context.user))
-        return self._result(
-            context,
-            build_invalid_option_message() + "\n\n" + build_opening_mode_menu(),
-        )
-
-    def _handle_quick_description(
+    def _handle_description(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
         context.original_description = message
         organization = self._organize_description(
             context,
             message,
-            purpose="descricao_chamado_rapido",
+            purpose="descricao_chamado",
         )
         if organization.needs_clarification:
             return self._result(context, organization.clarification_question)
+
         context.organized_description = organization.organized_text
-        category_match = self.category_matching_service.find_best_match(message)
-        context.pending_category_suggestion_id = category_match.category_id
-        context.pending_category_suggestion_name = category_match.category_name
-        self.state_machine.transition_to(
-            context, ConversationState.QUICK_CATEGORY_CONFIRMATION
-        )
-        return self._result(
-            context,
-            "🤖 **Identifiquei uma categoria provável:**\n\n"
-            f"{category_match.category_id}. **{category_match.category_name}**\n\n"
-            "Podemos seguir com ela?\n\n"
-            "1. ✅ **Sim**\n"
-            "2. 📚 **Escolher categoria manualmente**\n"
-            "3. 🧰 **Manter como Outro**\n"
-            "4. ❌ **Cancelar chamado**",
-        )
 
-    def _handle_quick_category_confirmation(
-        self, context: ConversationContext, message: str
-    ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
-            self._apply_pending_category(context)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                build_description_review_message(context.organized_description or ""),
-            )
-        if choice == 2:
-            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-            return self._result(
-                context,
-                "Escolha a categoria manualmente.\n\n" + render_category_menu(),
-            )
-        if choice == 3:
-            self._set_category(context, 12)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                build_description_review_message(context.organized_description or ""),
-            )
-        if choice == 4:
-            context.move_to_main_menu()
-            return self._result(
-                context,
-                "❌ **Chamado cancelado com segurança.**\n\n" + build_main_menu(context.user),
-            )
-        return self._result(context, build_invalid_option_message())
-
-    def _handle_category_selection(
-        self, context: ConversationContext, message: str
-    ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        category = get_category_by_id(choice or 0)
-        if category is None:
-            return self._result(
-                context,
-                build_invalid_option_message() + "\n\n" + render_category_menu(),
-            )
-
-        if category.id == 12 and not context.original_description:
-            self.state_machine.transition_to(context, ConversationState.OTHER_CATEGORY_TEXT)
-            return self._result(
-                context,
-                "Descreva em poucas palavras o tipo de problema:",
-            )
-
-        self._set_category(context, category.id)
-        if context.original_description and context.organized_description:
+        if context.selected_category_id:
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
             return self._result(
                 context,
                 build_description_review_message(context.organized_description),
             )
 
-        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_COLLECTION)
-        return self._result(context, render_description_prompt(category))
+        category_match = self.category_matching_service.find_best_match(
+            organization.organized_text or message
+        )
+        context.pending_category_suggestion_id = category_match.category_id
+        context.pending_category_suggestion_name = category_match.category_name
+        self.state_machine.transition_to(
+            context,
+            ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION,
+        )
+        return self._result(
+            context,
+            build_category_assignment_message(
+                context.organized_description,
+                category_match.category_id,
+                category_match.category_name,
+            ),
+        )
+
+    def _handle_category_assignment_confirmation(
+        self, context: ConversationContext, message: str
+    ) -> ConversationTurnResult:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4, 5})
+        if not validation.is_valid:
+            return self._result(context, validation.message)
+
+        if validation.choice == 1:
+            self._apply_pending_category(context)
+            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+            return self._result(
+                context,
+                build_description_review_message(context.organized_description or ""),
+            )
+        if validation.choice == 2:
+            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+            return self._result(context, render_category_menu())
+        if validation.choice == 3:
+            self._set_category(context, 12)
+            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+            return self._result(
+                context,
+                build_description_review_message(context.organized_description or ""),
+            )
+        if validation.choice == 4:
+            context.original_description = None
+            context.organized_description = None
+            context.pending_category_suggestion_id = None
+            context.pending_category_suggestion_name = None
+            self.state_machine.transition_to(
+                context,
+                ConversationState.DESCRIPTION_COLLECTION,
+            )
+            return self._result(context, build_open_ticket_prompt())
+
+        context.move_to_main_menu()
+        return self._result(
+            context,
+            "❌ **Chamado cancelado com segurança.**\n\n"
+            + build_main_menu(context.user),
+        )
+
+    def _handle_category_selection(
+        self, context: ConversationContext, message: str
+    ) -> ConversationTurnResult:
+        validation = self.menu_validator.require_choice(message, set(range(1, 13)))
+        if not validation.is_valid:
+            return self._result(
+                context,
+                validation.message + "\n\n" + render_category_menu(),
+            )
+
+        self._set_category(context, validation.choice or 12)
+        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+        return self._result(
+            context,
+            build_description_review_message(context.organized_description or ""),
+        )
 
     def _handle_other_category_text(
         self, context: ConversationContext, message: str
@@ -390,74 +408,61 @@ class ConversationFlowController:
     def _handle_other_category_confirmation(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3})
+        if not validation.is_valid:
+            return self._result(context, validation.message)
+        if validation.choice == 1:
             self._apply_pending_category(context)
-            category = get_category_by_id(context.selected_category_id or 12)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_COLLECTION)
-            return self._result(context, render_description_prompt(category))
-        if choice == 2:
+            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+            return self._result(
+                context,
+                build_description_review_message(context.organized_description or ""),
+            )
+        if validation.choice == 2:
             self._set_category(context, 12)
-            category = get_category_by_id(12)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_COLLECTION)
-            return self._result(context, render_description_prompt(category))
-        if choice == 3:
-            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-            return self._result(context, render_category_menu())
-        return self._result(context, build_invalid_option_message())
-
-    def _handle_description(
-        self, context: ConversationContext, message: str
-    ) -> ConversationTurnResult:
-        context.original_description = message
-        organization = self._organize_description(
-            context,
-            message,
-            purpose="descricao_chamado",
-        )
-        if organization.needs_clarification:
-            return self._result(context, organization.clarification_question)
-        context.organized_description = organization.organized_text
-        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-        return self._result(
-            context,
-            build_description_review_message(context.organized_description),
-        )
+            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+            return self._result(
+                context,
+                build_description_review_message(context.organized_description or ""),
+            )
+        self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+        return self._result(context, render_category_menu())
 
     def _handle_description_review(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
+        if not validation.is_valid:
+            return self._result(context, validation.message)
+        if validation.choice == 1:
             self.state_machine.transition_to(context, ConversationState.IMPACT_SELECTION)
             return self._result(context, render_impact_menu())
-        if choice == 2:
+        if validation.choice == 2:
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_COLLECTION)
-            category = get_category_by_id(context.selected_category_id or 12)
-            return self._result(context, render_description_prompt(category))
-        if choice == 3:
+            return self._result(context, build_open_ticket_prompt())
+        if validation.choice == 3:
             context.organized_description = context.original_description
             self.state_machine.transition_to(context, ConversationState.IMPACT_SELECTION)
             return self._result(context, render_impact_menu())
-        if choice == 4:
-            context.move_to_main_menu()
-            return self._result(
-                context,
-                "❌ **Chamado cancelado com segurança.**\n\n" + build_main_menu(context.user),
-            )
-        return self._result(context, build_invalid_option_message())
+
+        context.move_to_main_menu()
+        return self._result(
+            context,
+            "❌ **Chamado cancelado com segurança.**\n\n"
+            + build_main_menu(context.user),
+        )
 
     def _handle_impact(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        impact = get_impact_by_id(choice or 0)
-        if impact is None:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4, 5})
+        if not validation.is_valid:
             return self._result(
                 context,
-                build_invalid_option_message() + "\n\n" + render_impact_menu(),
+                validation.message + "\n\n" + render_impact_menu(),
             )
 
+        impact = get_impact_by_id(validation.choice or 0)
         context.impact_id = impact.id
         context.impact_label = impact.label
         context.severity = self.severity_mapping_service.map_impact_to_severity(
@@ -469,6 +474,11 @@ class ConversationFlowController:
     def _handle_location(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
+        if self.parser.parse_choice(message) is not None:
+            return self._result(
+                context,
+                "📍 Informe o setor ou localidade em texto, por exemplo: **TI - Matriz**.",
+            )
         context.location = message
         self.state_machine.transition_to(context, ConversationState.EVIDENCE_DECISION)
         return self._result(context, build_evidence_question())
@@ -476,17 +486,20 @@ class ConversationFlowController:
     def _handle_evidence_decision(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
+        validation = self.menu_validator.require_choice(message, {1, 2})
+        if not validation.is_valid:
+            return self._result(
+                context,
+                validation.message + "\n\n" + build_evidence_question(),
+            )
+        if validation.choice == 1:
             self.state_machine.transition_to(context, ConversationState.EVIDENCE_COLLECTION)
             return self._result(
                 context,
                 "📎 Descreva o erro, print ou informação adicional. No simulador web, envie apenas texto.",
             )
-        if choice == 2:
-            context.evidence = "Não informado"
-            return self._prepare_final_summary(context)
-        return self._result(context, build_invalid_option_message())
+        context.evidence = "Não informado"
+        return self._prepare_final_summary(context)
 
     def _handle_evidence_text(
         self, context: ConversationContext, message: str
@@ -504,71 +517,62 @@ class ConversationFlowController:
     def _handle_final_confirmation(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
-            draft = self.ticket_factory.create_draft_from_context(context)
-            payload = self.glpi_payload_builder.build_from_ticket_draft(draft)
-            created_ticket = self.glpi_client.create_ticket(payload)
-            created_ticket_data = created_ticket.to_dict()
-            context.move_to_main_menu()
-            return self._result(
-                context,
-                "✅ **Chamado simulado criado com sucesso.**\n\n"
-                f"🔢 **Número simulado:** {created_ticket.ticket_number}\n"
-                f"🏷️ **Título:** {created_ticket.title}\n"
-                f"📌 **Status:** {created_ticket.status}\n"
-                f"🚦 **Gravidade:** {created_ticket.severity}\n"
-                f"📝 **Descrição organizada:** {created_ticket.description}\n\n"
-                + build_main_menu(context.user),
-                created_ticket=created_ticket_data,
-            )
-        if choice == 2:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3})
+        if not validation.is_valid:
+            return self._result(context, validation.message)
+
+        if validation.choice == 1:
+            return self._create_ticket(context)
+        if validation.choice == 2:
             self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
             return self._result(
                 context,
-                "✏️ **Vamos corrigir as informações do chamado.**\n\n" + render_category_menu(),
+                "✏️ **Vamos corrigir as informações do chamado.**\n\n"
+                + render_category_menu(),
                 ticket_preview=context.ticket_preview,
             )
-        if choice == 3:
-            context.move_to_main_menu()
-            return self._result(
-                context,
-                "❌ **Chamado cancelado com segurança.**\n\n" + build_main_menu(context.user),
-            )
-        return self._result(context, build_invalid_option_message())
+
+        context.move_to_main_menu()
+        return self._result(
+            context,
+            "❌ **Chamado cancelado com segurança.**\n\n"
+            + build_main_menu(context.user),
+        )
 
     def _handle_query_menu(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4, 5})
+        if not validation.is_valid:
+            return self._result(
+                context,
+                validation.message + "\n\n" + build_query_menu(),
+            )
+
+        if validation.choice == 1:
             return self._render_ticket_list(
                 context,
                 title="Meus chamados abertos",
                 status_filter=TicketStatus.OPEN.value,
             )
-        if choice == 2:
+        if validation.choice == 2:
             return self._render_ticket_list(
                 context,
                 title="Meus chamados em atendimento",
                 status_filter=TicketStatus.IN_PROGRESS.value,
             )
-        if choice == 3:
+        if validation.choice == 3:
             return self._render_ticket_list(
                 context,
                 title="Meus últimos chamados",
                 status_filter=None,
             )
-        if choice == 4:
+        if validation.choice == 4:
             self.state_machine.transition_to(context, ConversationState.QUERY_TICKET_NUMBER)
             return self._result(context, "🔢 Informe o **número do chamado**.")
-        if choice == 5:
-            context.move_to_main_menu()
-            return self._result(context, build_main_menu(context.user))
-        return self._result(
-            context,
-            build_invalid_option_message() + "\n\n" + build_query_menu(),
-        )
+
+        context.move_to_main_menu()
+        return self._result(context, build_main_menu(context.user))
 
     def _handle_query_ticket_number(
         self, context: ConversationContext, message: str
@@ -577,9 +581,13 @@ class ConversationFlowController:
         if ticket_number is None:
             return self._result(context, "🔢 Informe apenas o **número do chamado**.")
 
-        ticket = self.glpi_client.get_ticket_by_id(
-            ticket_number, context.user.glpi_user_id
-        )
+        try:
+            ticket = self.glpi_client.get_ticket_by_id(
+                ticket_number, context.user.glpi_user_id
+            )
+        except GLPIClientError:
+            ticket = None
+
         if not self.user_scope_guard.can_access_ticket(
             context.user.glpi_user_id, ticket
         ):
@@ -603,9 +611,13 @@ class ConversationFlowController:
         if ticket_number is None:
             return self._result(context, "🔢 Informe apenas o **número do chamado**.")
 
-        ticket = self.glpi_client.get_ticket_by_id(
-            ticket_number, context.user.glpi_user_id
-        )
+        try:
+            ticket = self.glpi_client.get_ticket_by_id(
+                ticket_number, context.user.glpi_user_id
+            )
+        except GLPIClientError:
+            ticket = None
+
         if not self.user_scope_guard.can_access_ticket(
             context.user.glpi_user_id, ticket
         ):
@@ -626,7 +638,8 @@ class ConversationFlowController:
 
         context.ticket_to_complement_id = ticket.ticket_number
         self.state_machine.transition_to(
-            context, ConversationState.COMPLEMENT_TEXT_COLLECTION
+            context,
+            ConversationState.COMPLEMENT_TEXT_COLLECTION,
         )
         return self._result(
             context,
@@ -654,32 +667,35 @@ class ConversationFlowController:
     def _handle_complement_review(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        choice = self.parser.parse_choice(message)
-        if choice == 1:
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
+        if not validation.is_valid:
+            return self._result(context, validation.message)
+        if validation.choice == 1:
             return self._create_followup(
                 context,
                 context.complement_rewritten_text or "",
             )
-        if choice == 2:
+        if validation.choice == 2:
             self.state_machine.transition_to(
-                context, ConversationState.COMPLEMENT_TEXT_COLLECTION
+                context,
+                ConversationState.COMPLEMENT_TEXT_COLLECTION,
             )
             return self._result(
                 context,
                 "✍️ Digite novamente o complemento que deseja adicionar.",
             )
-        if choice == 3:
+        if validation.choice == 3:
             return self._create_followup(
                 context,
                 context.complement_original_text or "",
             )
-        if choice == 4:
-            context.move_to_main_menu()
-            return self._result(
-                context,
-                "❌ **Complemento cancelado com segurança.**\n\n" + build_main_menu(context.user),
-            )
-        return self._result(context, build_invalid_option_message())
+
+        context.move_to_main_menu()
+        return self._result(
+            context,
+            "❌ **Complemento cancelado com segurança.**\n\n"
+            + build_main_menu(context.user),
+        )
 
     def _handle_exited(
         self, context: ConversationContext, message: str
@@ -701,6 +717,52 @@ class ConversationFlowController:
             context,
             self.ticket_summary_builder.render_summary_message(summary),
             ticket_preview=context.ticket_preview,
+        )
+
+    def _create_ticket(self, context: ConversationContext) -> ConversationTurnResult:
+        idempotency_key = self._ticket_idempotency_key(context)
+        existing_ticket = self.idempotency_store.get_result(idempotency_key)
+        if existing_ticket:
+            context.move_to_main_menu()
+            return self._result(
+                context,
+                "✅ **Esse chamado já foi registrado com segurança.**\n\n"
+                + self._render_created_ticket_message(existing_ticket)
+                + "\n\n"
+                + build_main_menu(context.user),
+                created_ticket=existing_ticket,
+            )
+
+        if not self.idempotency_store.reserve(idempotency_key):
+            return self._result(
+                context,
+                "⏳ Já estou processando essa abertura. Aguarde alguns segundos antes de tentar novamente.",
+            )
+
+        try:
+            draft = self.ticket_factory.create_draft_from_context(context)
+            payload = self.glpi_payload_builder.build_from_ticket_draft(draft)
+            created_ticket = self.glpi_client.create_ticket(payload)
+        except GLPIClientError:
+            logger.exception(
+                "glpi_ticket_creation_failed",
+                extra={"session_id": context.session_id},
+            )
+            return self._result(
+                context,
+                "⚠️ Não foi possível abrir o chamado no GLPI agora. "
+                "Tente novamente em instantes.",
+            )
+
+        created_ticket_data = created_ticket.to_dict()
+        self.idempotency_store.store_result(idempotency_key, created_ticket_data)
+        context.move_to_main_menu()
+        return self._result(
+            context,
+            self._render_created_ticket_message(created_ticket_data)
+            + "\n\n"
+            + build_main_menu(context.user),
+            created_ticket=created_ticket_data,
         )
 
     def _organize_description(
@@ -737,9 +799,14 @@ class ConversationFlowController:
         title: str,
         status_filter: str | None,
     ) -> ConversationTurnResult:
-        tickets = self.glpi_client.get_my_tickets(context.user.glpi_user_id)
+        try:
+            tickets = self.glpi_client.get_my_tickets(context.user.glpi_user_id)
+        except GLPIClientError:
+            tickets = []
+
         visible_tickets = self.user_scope_guard.filter_tickets_for_user(
-            context.user.glpi_user_id, tickets
+            context.user.glpi_user_id,
+            tickets,
         )
         if status_filter:
             visible_tickets = [
@@ -754,7 +821,7 @@ class ConversationFlowController:
                 + build_query_menu(),
             )
 
-        lines = [f"{title}:"]
+        lines = [f"🎫 **{title}:**"]
         for ticket in visible_tickets:
             lines.append(
                 f"#{ticket.ticket_number} - **{ticket.title}**\n"
@@ -778,11 +845,15 @@ class ConversationFlowController:
     def _create_followup(
         self, context: ConversationContext, content: str
     ) -> ConversationTurnResult:
-        followup = self.glpi_client.add_followup(
-            context.ticket_to_complement_id or 0,
-            context.user.glpi_user_id,
-            content,
-        )
+        try:
+            followup = self.glpi_client.add_followup(
+                context.ticket_to_complement_id or 0,
+                context.user.glpi_user_id,
+                content,
+            )
+        except GLPIClientError:
+            followup = None
+
         context.move_to_main_menu()
         if followup is None:
             return self._result(
@@ -790,21 +861,48 @@ class ConversationFlowController:
                 "🔎 Não localizei esse chamado entre os seus chamados disponíveis para complemento.\n\n"
                 + build_main_menu(context.user),
             )
-        return self._result(
-            context,
-            "✅ **Complemento simulado adicionado com sucesso.**\n\n"
-            + build_main_menu(context.user),
+        message = (
+            "✅ **Complemento adicionado com sucesso.**\n\n"
+            if self.settings.is_glpi_real_mode
+            else "✅ **Complemento simulado adicionado com sucesso.**\n\n"
         )
+        return self._result(context, message + build_main_menu(context.user))
 
     def _set_category(self, context: ConversationContext, category_id: int) -> None:
-        category = get_category_by_id(category_id)
-        if category is None:
-            category = get_category_by_id(12)
+        category = get_category_by_id(category_id) or get_category_by_id(12)
         context.selected_category_id = category.id
         context.selected_category_name = category.name
 
     def _apply_pending_category(self, context: ConversationContext) -> None:
         self._set_category(context, context.pending_category_suggestion_id or 12)
+
+    def _ticket_idempotency_key(self, context: ConversationContext) -> str:
+        payload = {
+            "session_id": context.session_id,
+            "preview": context.ticket_preview,
+            "description": context.organized_description,
+            "category": context.selected_category_id,
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        return f"{context.session_id}:{digest}"
+
+    def _render_created_ticket_message(self, created_ticket: dict) -> str:
+        title = (
+            "✅ **Chamado criado com sucesso no GLPI.**"
+            if self.settings.is_glpi_real_mode
+            else "✅ **Chamado simulado criado com sucesso.**"
+        )
+        number_label = "Número GLPI" if self.settings.is_glpi_real_mode else "Número simulado"
+        return (
+            f"{title}\n\n"
+            f"🔢 **{number_label}:** {created_ticket['ticket_number']}\n"
+            f"🏷️ **Título:** {created_ticket['title']}\n"
+            f"📌 **Status:** {created_ticket['status']}\n"
+            f"🚦 **Gravidade:** {created_ticket['severity']}\n"
+            f"📝 **Descrição organizada:** {created_ticket['description']}"
+        )
 
     def _result(
         self,

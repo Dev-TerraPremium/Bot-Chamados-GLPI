@@ -78,9 +78,17 @@ class GenerativeDescriptionOrganizer:
         self,
         client: LocalGenerativeClient,
         backend_name: str,
+        max_input_chars: int = 1000,
+        max_output_chars: int = 800,
+        num_predict: int = 180,
+        temperature: float = 0.1,
     ) -> None:
         self.client = client
         self.backend_name = backend_name
+        self.max_input_chars = max_input_chars
+        self.max_output_chars = max_output_chars
+        self.num_predict = num_predict
+        self.temperature = temperature
 
     def organize_ticket_description(
         self,
@@ -88,15 +96,26 @@ class GenerativeDescriptionOrganizer:
         category_name: str | None = None,
         purpose: str = "descricao_chamado",
     ) -> DescriptionOrganizationResult:
+        if len(user_text) > self.max_input_chars:
+            return DescriptionOrganizationResult(
+                status="needs_clarification",
+                organized_text="",
+                clarification_question=(
+                    "Sua descrição está muito longa para a IA local. "
+                    "Envie um resumo mais curto do problema."
+                ),
+                confidence=0.0,
+                backend=self.backend_name,
+            )
         model_payload = self.client.generate_json(
             system_prompt=self._build_system_prompt(),
             user_prompt=self._build_user_prompt(user_text, category_name, purpose),
             options={
-                "temperature": 0.1,
+                "temperature": self.temperature,
                 "top_p": 0.8,
                 "top_k": 20,
                 "num_ctx": 2048,
-                "num_predict": 180,
+                "num_predict": self.num_predict,
             },
         )
         return self._normalize_model_payload(model_payload)
@@ -120,6 +139,13 @@ class GenerativeDescriptionOrganizer:
 
         if status == "organized" and not organized_text:
             status = "needs_clarification"
+        if len(organized_text) > self.max_output_chars:
+            status = "needs_clarification"
+            organized_text = ""
+            clarification_question = (
+                "A IA local gerou uma resposta maior que o permitido. "
+                "Pode resumir o problema em uma frase?"
+            )
         if status == "organized" and self._organized_text_looks_unsafe(
             organized_text
         ):
@@ -234,4 +260,8 @@ def build_generative_description_organizer(
     return GenerativeDescriptionOrganizer(
         client=client,
         backend_name=f"ollama:{settings.local_generative_model}",
+        max_input_chars=settings.ai_max_input_chars,
+        max_output_chars=settings.ai_max_output_chars,
+        num_predict=settings.ai_ollama_num_predict,
+        temperature=settings.ai_ollama_temperature,
     )

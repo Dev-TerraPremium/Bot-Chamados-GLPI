@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import re
+import unicodedata
 
 from app.triage_rules.category_catalog import get_category_by_id
 
@@ -23,8 +24,8 @@ class CategoryMatchingService:
         (10, ("camera", "cameras", "cftv", "dvr", "sem imagem")),
         (7, ("telefone", "telefonia", "ramal", "ligacao")),
         (8, ("glpi", "chamado")),
-        (9, ("equipamento", "mouse", "teclado", "monitor", "notebook novo")),
-        (2, ("computador", "notebook", "lento", "nao liga", "tela")),
+        (9, ("equipamento", "mouse", "teclado", "monitor", "desktop novo", "notebook novo")),
+        (2, ("computador", "desktop", "notebook", "lento", "nao liga", "tela")),
     )
 
     def find_best_match(self, text: str) -> CategoryMatch:
@@ -52,23 +53,6 @@ class CategoryMatchingService:
 
     @staticmethod
     def _normalize(text: str) -> str:
-        text = text.casefold()
-        text = re.sub(r"\s+", " ", text)
-        replacements = {
-            "á": "a",
-            "à": "a",
-            "ã": "a",
-            "â": "a",
-            "é": "e",
-            "ê": "e",
-            "í": "i",
-            "ó": "o",
-            "ô": "o",
-            "õ": "o",
-            "ú": "u",
-            "ç": "c",
-        }
-        for source, target in replacements.items():
-            text = text.replace(source, target)
-        return text.strip()
-
+        text = unicodedata.normalize("NFKD", text.casefold())
+        text = "".join(char for char in text if not unicodedata.combining(char))
+        return re.sub(r"\s+", " ", text).strip()
