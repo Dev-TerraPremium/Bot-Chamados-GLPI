@@ -34,13 +34,13 @@ class AppSettings:
     use_celery_workers: bool = False
     local_light_ai_mode: str = "generative_ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    local_generative_model: str = "hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0"
+    local_generative_model: str = "qwen2.5:1.5b"
     local_generative_timeout_seconds: float = 30.0
     ai_guided_detailing_enabled: bool = True
     ai_max_clarification_questions: int = 5
     ai_max_input_chars: int = 1000
     ai_max_output_chars: int = 800
-    ai_ollama_num_predict: int = 180
+    ai_ollama_num_predict: int = 300
     ai_ollama_temperature: float = 0.1
     max_message_length: int = 1000
     rate_limit_messages_per_minute: int = 20
@@ -65,6 +65,14 @@ class AppSettings:
     glpi_create_ticket_idempotency_ttl_seconds: int = 300
     glpi_ticket_requester_search_field: int = 4
     expose_debug_routes: bool = True
+    channel_linking_mode: str = "mock"
+    channel_link_cpf_prefix_length: int = 4
+    channel_link_hmac_pepper: str = "changeme"
+    channel_link_max_failed_attempts: int = 3
+    channel_link_allow_web_simulator_auto_user: bool = True
+    channel_link_active_ttl_seconds: int = 0
+    channel_link_pending_ttl_seconds: int = 900
+    channel_link_audit_ttl_seconds: int = 31536000
 
     @property
     def is_glpi_real_mode(self) -> bool:
@@ -107,7 +115,7 @@ def load_settings() -> AppSettings:
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
         local_generative_model=os.getenv(
             "LOCAL_GENERATIVE_MODEL",
-            "hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0",
+            "qwen2.5:1.5b",
         ),
         local_generative_timeout_seconds=_get_float(
             "LOCAL_GENERATIVE_TIMEOUT_SECONDS", 30.0
@@ -116,7 +124,7 @@ def load_settings() -> AppSettings:
         ai_max_clarification_questions=_get_int("AI_MAX_CLARIFICATION_QUESTIONS", 5),
         ai_max_input_chars=_get_int("AI_MAX_INPUT_CHARS", 1000),
         ai_max_output_chars=_get_int("AI_MAX_OUTPUT_CHARS", 800),
-        ai_ollama_num_predict=_get_int("AI_OLLAMA_NUM_PREDICT", 180),
+        ai_ollama_num_predict=_get_int("AI_OLLAMA_NUM_PREDICT", 300),
         ai_ollama_temperature=_get_float("AI_OLLAMA_TEMPERATURE", 0.1),
         max_message_length=_get_int("MAX_MESSAGE_LENGTH", 1000),
         rate_limit_messages_per_minute=_get_int(
@@ -153,6 +161,14 @@ def load_settings() -> AppSettings:
             "GLPI_TICKET_REQUESTER_SEARCH_FIELD", 4
         ),
         expose_debug_routes=_get_bool("EXPOSE_DEBUG_ROUTES", True),
+        channel_linking_mode=os.getenv("CHANNEL_LINKING_MODE", "mock"),
+        channel_link_cpf_prefix_length=_get_int("CHANNEL_LINK_CPF_PREFIX_LENGTH", 4),
+        channel_link_hmac_pepper=os.getenv("CHANNEL_LINK_HMAC_PEPPER", "changeme"),
+        channel_link_max_failed_attempts=_get_int("CHANNEL_LINK_MAX_FAILED_ATTEMPTS", 3),
+        channel_link_allow_web_simulator_auto_user=_get_bool("CHANNEL_LINK_ALLOW_WEB_SIMULATOR_AUTO_USER", True),
+        channel_link_active_ttl_seconds=_get_int("CHANNEL_LINK_ACTIVE_TTL_SECONDS", 0),
+        channel_link_pending_ttl_seconds=_get_int("CHANNEL_LINK_PENDING_TTL_SECONDS", 900),
+        channel_link_audit_ttl_seconds=_get_int("CHANNEL_LINK_AUDIT_TTL_SECONDS", 31536000),
     )
     settings.validate_runtime_requirements()
     return settings

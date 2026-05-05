@@ -5,8 +5,8 @@ O MVP usa uma camada generativa local para organizar descricoes em portugues do 
 ## Modelo padrao
 
 - Runtime: Ollama local
-- Modelo: `hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`
-- Licenca do modelo Qwen3: Apache 2.0
+- Modelo: `qwen2.5:1.5b`
+- Licenca do modelo Qwen: Apache 2.0
 - Uso: somente organizacao de descricoes e complementos de chamados
 
 ## Funcao unica
@@ -24,13 +24,13 @@ Ela nao classifica categoria, nao define gravidade, nao sugere causa, nao gera d
 
 - `LOCAL_LIGHT_AI_MODE=generative_ollama`
 - `OLLAMA_BASE_URL=http://127.0.0.1:11434`
-- `LOCAL_GENERATIVE_MODEL=hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`
+- `LOCAL_GENERATIVE_MODEL=qwen2.5:1.5b`
 - `LOCAL_GENERATIVE_TIMEOUT_SECONDS=30`
 
 ## Preparacao local
 
 ```bash
-ollama pull hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0
+ollama pull qwen2.5:1.5b
 ```
 
 O projeto nao usa fallback de regex para organizacao de descricao. Se o runtime local nao estiver disponivel, o bot informa indisponibilidade da IA generativa local.

@@ -9,6 +9,7 @@ from app.application_config.settings import AppSettings, load_settings
 from app.authentication_and_identity.simulated_auth_service import SimulatedAuthService
 from app.background_jobs.celery_description_organizer import CeleryDescriptionOrganizer
 from app.background_jobs.celery_ticket_detailer import CeleryTicketDetailer
+from app.authentication_and_identity.channel_linking_factory import build_channel_linking_service
 from app.conversation_engine.conversation_context import ConversationContext
 from app.conversation_engine.conversation_input_parser import ConversationInputParser
 from app.conversation_engine.conversation_menu_validator import ConversationMenuValidator
@@ -64,6 +65,8 @@ from app.triage_rules.category_matching_service import CategoryMatchingService
 from app.triage_rules.impact_catalog import get_impact_by_id, render_impact_menu
 from app.triage_rules.severity_mapping_service import SeverityMappingService
 from app.triage_rules.title_generation_service import TitleGenerationService
+from app.local_light_ai.generative_category_suggester import build_generative_category_suggester
+from app.local_light_ai.generative_title_generator import build_generative_title_generator
 
 
 logger = logging.getLogger(__name__)
@@ -84,7 +87,7 @@ class ConversationFlowController:
         idempotency_store=None,
     ) -> None:
         self.settings = settings or load_settings()
-        self.auth_service = auth_service or SimulatedAuthService()
+        self.channel_linking_service = build_channel_linking_service(self.settings)
         self.ticket_store = ticket_store or InMemoryTicketStore()
         self.conversation_store = conversation_store or build_conversation_store(
             self.settings
@@ -105,9 +108,9 @@ class ConversationFlowController:
         )
         self.suspicious_detector = SuspiciousInputDetector()
         self.user_scope_guard = UserScopeGuard()
-        self.category_matching_service = CategoryMatchingService()
+        self.category_matching_service = build_generative_category_suggester(self.settings)
         self.severity_mapping_service = SeverityMappingService()
-        self.title_generation_service = TitleGenerationService()
+        self.title_generation_service = build_generative_title_generator(self.settings)
         self.ticket_summary_builder = TicketSummaryBuilder()
         self.ticket_factory = TicketFactory()
         self.glpi_payload_builder = GLPITicketPayloadBuilder(
@@ -132,6 +135,7 @@ class ConversationFlowController:
         session_id: str,
         message: str,
         channel: str = DEFAULT_CHANNEL,
+        channel_identifier: str = "",
     ) -> ConversationTurnResult:
         normalized_session_id = session_id.strip() or str(uuid4())
         with self.session_lock.lock(normalized_session_id):
@@ -139,6 +143,7 @@ class ConversationFlowController:
                 normalized_session_id,
                 message,
                 channel,
+                channel_identifier,
             )
 
     def _process_message_locked(
@@ -146,8 +151,15 @@ class ConversationFlowController:
         session_id: str,
         message: str,
         channel: str,
+        channel_identifier: str,
     ) -> ConversationTurnResult:
-        context = self._get_or_create_context(session_id, channel)
+        
+        auth_resolution = self.channel_linking_service.resolve_or_handle(channel, channel_identifier, message)
+        
+        if auth_resolution.requires_user_action:
+            return self._result_no_context(session_id, auth_resolution.bot_message)
+            
+        context = self._get_or_create_context(session_id, channel, auth_resolution.user)
 
         if self.parser.is_start_message(message):
             return self._result(context, build_main_menu(context.user))
@@ -198,14 +210,25 @@ class ConversationFlowController:
         return result
 
     def reset_conversation(
-        self, session_id: str, channel: str = DEFAULT_CHANNEL
+        self, session_id: str, channel: str = DEFAULT_CHANNEL, channel_identifier: str = ""
     ) -> ConversationTurnResult:
         normalized_session_id = session_id.strip() or str(uuid4())
         with self.session_lock.lock(normalized_session_id):
             self.conversation_store.delete(normalized_session_id)
             self.rate_limiter.reset(normalized_session_id)
             self.idempotency_store.clear(normalized_session_id)
-            context = self._get_or_create_context(normalized_session_id, channel)
+            
+            auth_resolution = self.channel_linking_service.resolve_or_prompt_link(
+                channel_identifier, ""
+            )
+            
+            if not auth_resolution.is_active:
+                return self._result_no_context(
+                    normalized_session_id, 
+                    "🔄 **Conversa reiniciada com segurança.**\n\n" + auth_resolution.prompt_message
+                )
+
+            context = self._get_or_create_context(normalized_session_id, channel, auth_resolution.user)
             return self._result(
                 context,
                 "🔄 **Conversa reiniciada com segurança.**\n\n"
@@ -218,13 +241,16 @@ class ConversationFlowController:
         return self.conversation_store.debug_context(session_id)
 
     def _get_or_create_context(
-        self, session_id: str, channel: str
+        self, session_id: str, channel: str, user=None
     ) -> ConversationContext:
         context = self.conversation_store.get(session_id)
         if context is not None:
+            if user:
+                if not context.user or context.user.glpi_user_id != user.glpi_user_id:
+                    # If user changed unexpectedly or was missing, update it
+                    context.user = user
             return context
 
-        user = self.auth_service.authenticate_session(session_id, channel)
         context = ConversationContext(
             session_id=session_id,
             channel=channel,
@@ -233,6 +259,13 @@ class ConversationFlowController:
         )
         self.conversation_store.save(context)
         return context
+
+    def _result_no_context(self, session_id: str, bot_message: str) -> ConversationTurnResult:
+        return ConversationTurnResult(
+            session_id=session_id,
+            bot_message=bot_message,
+            state="authentication"
+        )
 
     def _get_handler(self, state: ConversationState):
         handlers = {

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class ConversationMessageRequest(BaseModel):
     session_id: str = Field(default="", max_length=120)
+    channel_identifier: str = Field(default="", max_length=255)
     message: str = Field(default="", max_length=5000)
 
 

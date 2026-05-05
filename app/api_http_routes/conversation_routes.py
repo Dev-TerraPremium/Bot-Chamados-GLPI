@@ -32,6 +32,7 @@ def send_message(request: ConversationMessageRequest) -> ConversationMessageResp
     result = web_adapter.receive_message(
         session_id=request.session_id,
         message=request.message,
+        channel_identifier=request.channel_identifier,
     )
     return _to_response(result)
 
@@ -40,7 +41,10 @@ def send_message(request: ConversationMessageRequest) -> ConversationMessageResp
 def reset_conversation(
     request: ConversationMessageRequest,
 ) -> ConversationMessageResponse:
-    result = web_adapter.reset_session(session_id=request.session_id)
+    result = web_adapter.reset_session(
+        session_id=request.session_id,
+        channel_identifier=request.channel_identifier,
+    )
     return _to_response(result)
 
 

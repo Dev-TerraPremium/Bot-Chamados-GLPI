@@ -8,7 +8,7 @@ Este projeto cria a fundação modular do "Assistente de Chamados TI On-Premise"
 
 ## Escopo do MVP
 
-- Autenticação simulada do usuário Pedro Torres, ainda sem autenticação definitiva.
+- Vínculo de identidade por canal (telefone + CPF parcial).
 - Motor de conversa orientado por estados.
 - Abertura única de chamado, sem duplicidade entre rápido e detalhado.
 - Atribuição automática de categoria por descrição, com escolha manual opcional.
@@ -24,7 +24,7 @@ Este projeto cria a fundação modular do "Assistente de Chamados TI On-Premise"
 
 ## Ainda nao implementado
 
-Ainda não há autenticação definitiva, Telegram real, WhatsApp real, Microsoft Teams real, upload real de anexos ou envio de mensagens externas. A integração GLPI real já existe por API REST, mas deve ser ativada por variáveis de ambiente e validada com credenciais fora do Git.
+Ainda não há Telegram real, WhatsApp real, Microsoft Teams real, upload real de anexos ou envio de mensagens externas. A integração GLPI real já existe por API REST, mas deve ser ativada por variáveis de ambiente e validada com credenciais fora do Git. A autenticação agora exige verificação inicial dos 4 primeiros dígitos do CPF caso o telefone não esteja vinculado.
 
 ## Instalar
 
@@ -42,7 +42,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-O `requirements.txt` instala as dependências Python da aplicação, incluindo FastAPI, Redis, Celery, HTTPX e testes. A IA generativa local roda em um runtime on-premise separado, via Ollama, usando por padrão o modelo `hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`.
+O `requirements.txt` instala as dependências Python da aplicação, incluindo FastAPI, Redis, Celery, HTTPX e testes. A IA generativa local roda em um runtime on-premise separado, via Ollama, usando por padrão o modelo `qwen2.5:1.5b`.
 
 ## Rodar
 
@@ -102,7 +102,7 @@ O arquivo [`.env.docker`](/Users/paletotcode/Documents/Bot-Chamados-GLPI/.env.do
 - `GLPI_INTEGRATION_MODE=mock`
 - `LOCAL_LIGHT_AI_MODE=generative_ollama`
 - `OLLAMA_BASE_URL=http://host.docker.internal:11434`
-- `LOCAL_GENERATIVE_MODEL=hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`
+- `LOCAL_GENERATIVE_MODEL=qwen2.5:1.5b`
 - `AI_GUIDED_DETAILING_ENABLED=true`
 - `AI_MAX_CLARIFICATION_QUESTIONS=5`
 
@@ -203,19 +203,19 @@ Parametrizacao:
 
 - `LOCAL_LIGHT_AI_MODE=generative_ollama`
 - `OLLAMA_BASE_URL=http://127.0.0.1:11434`
-- `LOCAL_GENERATIVE_MODEL=hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0`
+- `LOCAL_GENERATIVE_MODEL=qwen2.5:1.5b`
 - `LOCAL_GENERATIVE_TIMEOUT_SECONDS=30`
 - `AI_GUIDED_DETAILING_ENABLED=true`
 - `AI_MAX_CLARIFICATION_QUESTIONS=5`
 - `AI_MAX_INPUT_CHARS=1000`
 - `AI_MAX_OUTPUT_CHARS=800`
-- `AI_OLLAMA_NUM_PREDICT=180`
+- `AI_OLLAMA_NUM_PREDICT=300`
 - `AI_OLLAMA_TEMPERATURE=0.1`
 
 Para preparar a IA local:
 
 ```bash
-ollama pull hf.co/Qwen/Qwen3-0.6B-GGUF:Q8_0
+ollama pull qwen2.5:1.5b
 ```
 
 Se o Ollama ou o modelo não estiverem disponíveis, o fluxo não usa fallback legado: o bot informa que a IA generativa local está indisponível e pede nova tentativa após correção do runtime.
