@@ -93,7 +93,7 @@ def start_services(host, port, allowed_numbers):
         print(f" [{RED}!{RESET}] Sandbox Mode Desativado         -> {RED}Modo Público (Todos podem acessar!){RESET}")
 
     # Inicia o Go
-    go_path = r"C:\Program Files\Go\bin\go.exe"
+    go_path = r"C:\Program Files\Go\bin\go.exe" if os.name == 'nt' else "go"
     print(f" [{GREEN}✓{RESET}] Serviço WhatsApp (WhatsMeow)      -> {BLUE}Iniciando...{RESET}\n")
     print(f" {YELLOW}» Aguarde o QR Code de Autenticação corporativa abaixo...{RESET}\n")
     
