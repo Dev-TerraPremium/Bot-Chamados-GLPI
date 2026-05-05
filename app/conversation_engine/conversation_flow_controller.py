@@ -218,14 +218,14 @@ class ConversationFlowController:
             self.rate_limiter.reset(normalized_session_id)
             self.idempotency_store.clear(normalized_session_id)
             
-            auth_resolution = self.channel_linking_service.resolve_or_prompt_link(
-                channel_identifier, ""
+            auth_resolution = self.channel_linking_service.resolve_or_handle(
+                channel, channel_identifier, ""
             )
             
-            if not auth_resolution.is_active:
+            if not auth_resolution.is_linked:
                 return self._result_no_context(
                     normalized_session_id, 
-                    "🔄 **Conversa reiniciada com segurança.**\n\n" + auth_resolution.prompt_message
+                    "🔄 **Conversa reiniciada com segurança.**\n\n" + (auth_resolution.bot_message or "")
                 )
 
             context = self._get_or_create_context(normalized_session_id, channel, auth_resolution.user)

@@ -17,10 +17,10 @@ def build_main_menu(user: AuthenticatedUser) -> str:
 def build_open_ticket_prompt() -> str:
     return (
         "🆕 **Vamos abrir seu chamado.**\n\n"
-        "Descreva em poucas palavras o que aconteceu ou o que você precisa.\n"
-        "Se faltar detalhe, eu posso fazer algumas perguntas rápidas antes de organizar o texto.\n"
-        "Depois vou sugerir a categoria automaticamente.\n\n"
-        "Você poderá confirmar a categoria sugerida ou escolher outra manualmente."
+        "📝 **Descreva em poucas palavras** o que aconteceu ou o que você precisa.\n"
+        "💬 **Se faltar detalhe**, eu posso fazer algumas perguntas rápidas antes de organizar o texto.\n"
+        "✨ Depois vou **sugerir a categoria automaticamente**.\n\n"
+        "✅ Você poderá **confirmar a categoria sugerida** ou 📚 **escolher outra manualmente**."
     )
 
 
@@ -88,11 +88,11 @@ def build_description_review_message(organized_text: str) -> str:
 def build_location_prompt() -> str:
     return (
         "📍 **Informe a localidade ou setor relacionado ao chamado.**\n\n"
-        "Exemplos:\n"
-        "- RH - Rondonópolis\n"
-        "- Financeiro - Matriz\n"
-        "- Oficina - Primavera\n"
-        "- Administrativo - Roo"
+        "💡 **Exemplos:**\n"
+        "🏢 **RH** - Rondonópolis\n"
+        "💰 **Financeiro** - Matriz\n"
+        "🛠️ **Oficina** - Primavera\n"
+        "📋 **Administrativo** - Roo"
     )
 
 
