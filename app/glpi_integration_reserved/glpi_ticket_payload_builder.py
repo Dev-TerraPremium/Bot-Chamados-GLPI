@@ -49,6 +49,7 @@ class GLPITicketPayloadBuilder:
                 "entities_id": entity_id,
                 "itilcategories_id": category_mapping.glpi_category_id,
                 "_users_id_requester": requester_user_id,
+                "type": draft.ticket_type,
                 "urgency": self._to_glpi_level(draft.impact_id),
                 "impact": self._to_glpi_level(draft.impact_id),
                 "priority": self._severity_to_priority(draft.severity),

@@ -23,6 +23,13 @@ def build_open_ticket_prompt() -> str:
         "✅ Você poderá **confirmar a categoria sugerida** ou 📚 **escolher outra manualmente**."
     )
 
+def build_ticket_type_prompt() -> str:
+    return (
+        "🤔 **Você está com um problema ou precisa solicitar algo novo?**\n\n"
+        "1. 💥 **Estou com um problema** (Incidente / Algo parou)\n"
+        "2. ➕ **Quero solicitar algo** (Requisição / Novo acesso / Novo equipamento)"
+    )
+
 
 def build_description_clarification_message(
     question: str,

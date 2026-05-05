@@ -3,6 +3,7 @@ from enum import Enum
 
 class ConversationState(str, Enum):
     MAIN_MENU = "main_menu"
+    TICKET_TYPE_SELECTION = "ticket_type_selection"
     CATEGORY_ASSIGNMENT_CONFIRMATION = "category_assignment_confirmation"
     CATEGORY_SELECTION = "category_selection"
     OTHER_CATEGORY_TEXT = "other_category_text"

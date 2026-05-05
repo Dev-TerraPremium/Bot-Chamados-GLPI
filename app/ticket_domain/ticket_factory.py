@@ -23,6 +23,8 @@ class TicketFactory:
             location=context.location or "",
             evidence=context.evidence or "Não informado",
             title=context.suggested_title or "",
+            ticket_type=context.ticket_type,
+            attachments=context.attachments.copy() if context.attachments else [],
         )
         self.validation_service.validate_draft(draft)
         return draft

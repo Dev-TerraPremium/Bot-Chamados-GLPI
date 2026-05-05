@@ -33,6 +33,7 @@ def send_message(request: ConversationMessageRequest) -> ConversationMessageResp
         session_id=request.session_id,
         message=request.message,
         channel_identifier=request.channel_identifier,
+        media=[m.dict() for m in request.media] if request.media else None
     )
     return _to_response(result)
 

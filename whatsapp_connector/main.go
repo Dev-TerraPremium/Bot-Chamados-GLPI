@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,10 +24,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type AttachmentPayload struct {
+	MimeType   string `json:"mime_type"`
+	FileName   string `json:"file_name"`
+	Base64Data string `json:"base64_data"`
+}
+
 type BotRequest struct {
-	SessionID         string `json:"session_id"`
-	Message           string `json:"message"`
-	ChannelIdentifier string `json:"channel_identifier"`
+	SessionID         string              `json:"session_id"`
+	Message           string              `json:"message"`
+	ChannelIdentifier string              `json:"channel_identifier"`
+	Media             []AttachmentPayload `json:"media,omitempty"`
 }
 
 type BotResponse struct {
@@ -54,12 +62,53 @@ func eventHandler(evt interface{}) {
 			text = v.Message.GetExtendedTextMessage().GetText()
 		}
 
-		if text == "" {
+		if text == "" && v.Message.GetImageMessage() == nil && v.Message.GetDocumentMessage() == nil {
 			return
+		}
+
+		var mediaPayload []AttachmentPayload
+
+		if img := v.Message.GetImageMessage(); img != nil {
+			data, err := client.Download(context.Background(), img)
+			if err == nil {
+				mediaPayload = append(mediaPayload, AttachmentPayload{
+					MimeType:   img.GetMimetype(),
+					FileName:   "imagem.jpg",
+					Base64Data: base64.StdEncoding.EncodeToString(data),
+				})
+			}
+		} else if doc := v.Message.GetDocumentMessage(); doc != nil {
+			data, err := client.Download(context.Background(), doc)
+			if err == nil {
+				fileName := doc.GetFileName()
+				if fileName == "" {
+					fileName = "documento"
+				}
+				mediaPayload = append(mediaPayload, AttachmentPayload{
+					MimeType:   doc.GetMimetype(),
+					FileName:   fileName,
+					Base64Data: base64.StdEncoding.EncodeToString(data),
+				})
+			}
 		}
 
 		// O número do WhatsApp vem algo como 5511999999999
 		senderPhone := v.Info.Sender.User
+
+		allowedNumbersStr := os.Getenv("ALLOWED_NUMBERS")
+		if allowedNumbersStr != "" {
+			allowed := false
+			for _, n := range strings.Split(allowedNumbersStr, ",") {
+				if strings.Contains(senderPhone, strings.TrimSpace(n)) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return // Sandbox: ignora números não permitidos
+			}
+		}
+
 		fmt.Printf("Nova mensagem de %s: %s\n", senderPhone, text)
 
 		// Dispara para a API FastAPI em background
@@ -67,7 +116,8 @@ func eventHandler(evt interface{}) {
 			reqBody := BotRequest{
 				SessionID:         senderPhone,
 				Message:           text,
-				ChannelIdentifier: senderPhone, // O canal de identificação é o número
+				ChannelIdentifier: senderPhone,
+				Media:             mediaPayload,
 			}
 			jsonData, err := json.Marshal(reqBody)
 			if err != nil {
@@ -110,9 +160,10 @@ func eventHandler(evt interface{}) {
 }
 
 func main() {
-	// 1. Inicia o banco local SQLite (modernc sem CGO para facilitar no Windows)
+	// 1. Inicia o banco local SQLite
 	dbLog := waLog.Stdout("Database", "ERROR", true)
-	container, err := sqlstore.New(context.Background(), "sqlite", "file:store.db?_pragma=foreign_keys(1)", dbLog)
+	connStr := "file:store.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)"
+	container, err := sqlstore.New(context.Background(), "sqlite", connStr, dbLog)
 	if err != nil {
 		panic(err)
 	}

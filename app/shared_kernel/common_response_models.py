@@ -3,10 +3,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class AttachmentPayload(BaseModel):
+    mime_type: str
+    file_name: str
+    base64_data: str
+
+
 class ConversationMessageRequest(BaseModel):
     session_id: str = Field(default="", max_length=120)
     channel_identifier: str = Field(default="", max_length=255)
     message: str = Field(default="", max_length=5000)
+    media: list[AttachmentPayload] | None = None
 
 
 class ConversationMessageResponse(BaseModel):

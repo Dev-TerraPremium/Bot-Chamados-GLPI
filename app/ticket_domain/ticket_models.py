@@ -18,6 +18,8 @@ class TicketDraft:
     location: str
     evidence: str
     title: str
+    ticket_type: int = 1
+    attachments: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)

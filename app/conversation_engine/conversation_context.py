@@ -12,6 +12,8 @@ class ConversationContext:
     user: AuthenticatedUser
     state: ConversationState = ConversationState.MAIN_MENU
     opening_mode: str | None = None
+    ticket_type: int = 1
+    attachments: list[dict[str, Any]] = field(default_factory=list)
     selected_category_id: int | None = None
     selected_category_name: str | None = None
     pending_category_suggestion_id: int | None = None
@@ -33,6 +35,8 @@ class ConversationContext:
 
     def reset_ticket_draft(self) -> None:
         self.opening_mode = None
+        self.ticket_type = 1
+        self.attachments = []
         self.selected_category_id = None
         self.selected_category_name = None
         self.pending_category_suggestion_id = None

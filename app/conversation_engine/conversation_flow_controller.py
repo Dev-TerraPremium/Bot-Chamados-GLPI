@@ -24,6 +24,7 @@ from app.conversation_engine.conversation_messages import (
     build_main_menu,
     build_open_ticket_prompt,
     build_query_menu,
+    build_ticket_type_prompt,
 )
 from app.conversation_engine.conversation_state_machine import ConversationStateMachine
 from app.conversation_engine.conversation_states import ConversationState
@@ -136,6 +137,7 @@ class ConversationFlowController:
         message: str,
         channel: str = DEFAULT_CHANNEL,
         channel_identifier: str = "",
+        media: list[dict] | None = None,
     ) -> ConversationTurnResult:
         normalized_session_id = session_id.strip() or str(uuid4())
         with self.session_lock.lock(normalized_session_id):
@@ -144,6 +146,7 @@ class ConversationFlowController:
                 message,
                 channel,
                 channel_identifier,
+                media,
             )
 
     def _process_message_locked(
@@ -152,6 +155,7 @@ class ConversationFlowController:
         message: str,
         channel: str,
         channel_identifier: str,
+        media: list[dict] | None = None,
     ) -> ConversationTurnResult:
         
         auth_resolution = self.channel_linking_service.resolve_or_handle(channel, channel_identifier, message)
@@ -197,6 +201,11 @@ class ConversationFlowController:
             )
 
         sanitized_message = self.input_sanitizer.sanitize(message)
+        if media:
+            context.attachments.extend(media)
+            if not sanitized_message:
+                sanitized_message = "[Mídia Anexada]"
+
         if not sanitized_message:
             return self._result(context, "Envie uma mensagem com texto para continuar.")
 
@@ -270,6 +279,7 @@ class ConversationFlowController:
     def _get_handler(self, state: ConversationState):
         handlers = {
             ConversationState.MAIN_MENU: self._handle_main_menu,
+            ConversationState.TICKET_TYPE_SELECTION: self._handle_ticket_type_selection,
             ConversationState.DESCRIPTION_COLLECTION: self._handle_description,
             ConversationState.DESCRIPTION_CLARIFICATION: (
                 self._handle_description_clarification
@@ -316,9 +326,9 @@ class ConversationFlowController:
             context.opening_mode = TicketOpeningMode.ASSISTED.value
             self.state_machine.transition_to(
                 context,
-                ConversationState.DESCRIPTION_COLLECTION,
+                ConversationState.TICKET_TYPE_SELECTION,
             )
-            return self._result(context, build_open_ticket_prompt())
+            return self._result(context, build_ticket_type_prompt())
         if validation.choice == 2:
             self.state_machine.transition_to(context, ConversationState.QUERY_MENU)
             return self._result(context, build_query_menu())
@@ -337,6 +347,24 @@ class ConversationFlowController:
             context,
             "🚪 **Sessão encerrada.** Envie qualquer mensagem quando quiser iniciar novamente.",
         )
+
+    def _handle_ticket_type_selection(
+        self, context: ConversationContext, message: str
+    ) -> ConversationTurnResult:
+        validation = self.menu_validator.require_choice(message, {1, 2})
+        if not validation.is_valid:
+            return self._result(
+                context,
+                validation.message + "\n\n" + build_ticket_type_prompt(),
+            )
+            
+        context.ticket_type = validation.choice
+        self.state_machine.transition_to(
+            context,
+            ConversationState.DESCRIPTION_COLLECTION,
+        )
+        return self._result(context, build_open_ticket_prompt())
+
 
     def _handle_description(
         self, context: ConversationContext, message: str
