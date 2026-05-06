@@ -51,7 +51,10 @@ func eventHandler(evt interface{}) {
 		if v.Info.IsFromMe {
 			return
 		}
-		if v.Info.IsGroup {
+		if v.Info.IsGroup || v.Info.Sender.Server == "newsletter" || v.Info.Sender.Server == "broadcast" || v.Info.Sender.Server == "g.us" {
+			return
+		}
+		if v.Info.Sender.Server != "s.whatsapp.net" && v.Info.Sender.Server != "lid" {
 			return
 		}
 
