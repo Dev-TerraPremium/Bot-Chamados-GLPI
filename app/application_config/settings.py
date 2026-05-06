@@ -46,6 +46,7 @@ class AppSettings:
     rate_limit_messages_per_minute: int = 20
     rate_limit_messages_per_hour: int = 200
     session_ttl_seconds: int = 3600
+    session_lock_timeout_seconds: int = 180
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_backend: str = "redis://localhost:6379/2"
@@ -132,6 +133,7 @@ def load_settings() -> AppSettings:
         ),
         rate_limit_messages_per_hour=_get_int("RATE_LIMIT_MESSAGES_PER_HOUR", 200),
         session_ttl_seconds=_get_int("SESSION_TTL_SECONDS", 3600),
+        session_lock_timeout_seconds=_get_int("SESSION_LOCK_TIMEOUT_SECONDS", 180),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         celery_broker_url=os.getenv(
             "CELERY_BROKER_URL", "redis://localhost:6379/1"

@@ -34,7 +34,10 @@ def build_rate_limiter(settings: AppSettings):
 
 def build_session_lock(settings: AppSettings):
     if settings.is_redis_state_enabled:
-        return RedisSessionLock(get_redis_client(settings.redis_url))
+        return RedisSessionLock(
+            get_redis_client(settings.redis_url),
+            timeout_seconds=settings.session_lock_timeout_seconds,
+        )
     return NoOpSessionLock()
 
 

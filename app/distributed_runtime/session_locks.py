@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from redis import Redis
+from redis.exceptions import LockError
 
 
 class NoOpSessionLock:
@@ -28,4 +29,7 @@ class RedisSessionLock:
         try:
             yield
         finally:
-            lock.release()
+            try:
+                lock.release()
+            except LockError:
+                pass

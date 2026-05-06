@@ -27,3 +27,6 @@ Thumbs.db
 # Logs
 *.log
 
+# WhatsApp local session state
+whatsapp_connector/store.db
+whatsapp_connector/store.db-*
