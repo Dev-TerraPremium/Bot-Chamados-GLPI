@@ -34,7 +34,7 @@ def send_message(request: ConversationMessageRequest) -> ConversationMessageResp
         message=request.message,
         channel=request.channel,
         channel_identifier=request.channel_identifier,
-        media=[m.dict() for m in request.media] if request.media else None
+        media=[m.to_context_dict() for m in request.media] if request.media else None
     )
     return _to_response(result)
 

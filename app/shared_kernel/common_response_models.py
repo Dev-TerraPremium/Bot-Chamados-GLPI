@@ -1,14 +1,23 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.shared_kernel.constants import DEFAULT_CHANNEL
 
 
 class AttachmentPayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     mime_type: str
     file_name: str
-    base64_data: str
+    data_base64: str = Field(alias="base64_data")
+
+    def to_context_dict(self) -> dict[str, str]:
+        return {
+            "mime_type": self.mime_type,
+            "file_name": self.file_name,
+            "data_base64": self.data_base64,
+        }
 
 
 class ConversationMessageRequest(BaseModel):

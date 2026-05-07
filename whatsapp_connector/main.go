@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,7 +31,7 @@ import (
 type AttachmentPayload struct {
 	MimeType   string `json:"mime_type"`
 	FileName   string `json:"file_name"`
-	Base64Data string `json:"base64_data"`
+	DataBase64 string `json:"data_base64"`
 }
 
 type BotRequest struct {
@@ -50,6 +51,17 @@ type BotResponse struct {
 var client *whatsmeow.Client
 var connectorStartedAt = time.Now()
 var digitsOnly = regexp.MustCompile(`\D+`)
+var inflightMu sync.Mutex
+var inflightBySender = map[string]inflightEntry{}
+
+type inflightEntry struct {
+	startedAt    time.Time
+	lastNoticeAt time.Time
+}
+
+const inflightTTL = 5 * time.Minute
+const busyNoticeInterval = 15 * time.Second
+const busyMessage = "Ainda estou processando sua resposta anterior. Aguarde eu enviar a próxima mensagem antes de digitar outra opção."
 
 func normalizePhone(value string) string {
 	digits := digitsOnly.ReplaceAllString(value, "")
@@ -177,7 +189,138 @@ func extractText(message *waE2E.Message) string {
 	if message.GetExtendedTextMessage() != nil {
 		return message.GetExtendedTextMessage().GetText()
 	}
+	if message.GetImageMessage() != nil {
+		return message.GetImageMessage().GetCaption()
+	}
+	if message.GetVideoMessage() != nil {
+		return message.GetVideoMessage().GetCaption()
+	}
+	if message.GetDocumentMessage() != nil {
+		return message.GetDocumentMessage().GetCaption()
+	}
 	return ""
+}
+
+func hasSupportedMedia(message *waE2E.Message) bool {
+	return message.GetImageMessage() != nil ||
+		message.GetDocumentMessage() != nil ||
+		message.GetVideoMessage() != nil ||
+		message.GetAudioMessage() != nil ||
+		message.GetStickerMessage() != nil
+}
+
+func extensionForMime(mimeType string) string {
+	switch {
+	case strings.Contains(mimeType, "jpeg"):
+		return ".jpg"
+	case strings.Contains(mimeType, "png"):
+		return ".png"
+	case strings.Contains(mimeType, "webp"):
+		return ".webp"
+	case strings.Contains(mimeType, "mp4"):
+		return ".mp4"
+	case strings.Contains(mimeType, "ogg"):
+		return ".ogg"
+	case strings.Contains(mimeType, "mpeg"):
+		return ".mp3"
+	case strings.Contains(mimeType, "pdf"):
+		return ".pdf"
+	default:
+		return ""
+	}
+}
+
+func appendDownloadedMedia(ctx context.Context, payloads []AttachmentPayload, messageID string, label string, fileName string, mimeType string, downloader func(context.Context) ([]byte, error)) []AttachmentPayload {
+	data, err := downloader(ctx)
+	if err != nil {
+		fmt.Printf("Erro ao baixar anexo %s: %v\n", label, err)
+		return payloads
+	}
+	if fileName == "" {
+		fileName = fmt.Sprintf("%s-%s%s", label, messageID, extensionForMime(mimeType))
+	}
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return append(payloads, AttachmentPayload{
+		MimeType:   mimeType,
+		FileName:   fileName,
+		DataBase64: base64.StdEncoding.EncodeToString(data),
+	})
+}
+
+func collectMediaPayloads(ctx context.Context, message *waE2E.Message, messageID string) []AttachmentPayload {
+	var payloads []AttachmentPayload
+	if img := message.GetImageMessage(); img != nil {
+		payloads = appendDownloadedMedia(ctx, payloads, messageID, "imagem", "", img.GetMimetype(), func(ctx context.Context) ([]byte, error) {
+			return client.Download(ctx, img)
+		})
+	}
+	if doc := message.GetDocumentMessage(); doc != nil {
+		fileName := doc.GetFileName()
+		payloads = appendDownloadedMedia(ctx, payloads, messageID, "documento", fileName, doc.GetMimetype(), func(ctx context.Context) ([]byte, error) {
+			return client.Download(ctx, doc)
+		})
+	}
+	if video := message.GetVideoMessage(); video != nil {
+		payloads = appendDownloadedMedia(ctx, payloads, messageID, "video", "", video.GetMimetype(), func(ctx context.Context) ([]byte, error) {
+			return client.Download(ctx, video)
+		})
+	}
+	if audio := message.GetAudioMessage(); audio != nil {
+		payloads = appendDownloadedMedia(ctx, payloads, messageID, "audio", "", audio.GetMimetype(), func(ctx context.Context) ([]byte, error) {
+			return client.Download(ctx, audio)
+		})
+	}
+	if sticker := message.GetStickerMessage(); sticker != nil {
+		payloads = appendDownloadedMedia(ctx, payloads, messageID, "sticker", "", sticker.GetMimetype(), func(ctx context.Context) ([]byte, error) {
+			return client.Download(ctx, sticker)
+		})
+	}
+	return payloads
+}
+
+func tryStartProcessing(senderPhone string) (bool, bool) {
+	now := time.Now()
+	inflightMu.Lock()
+	defer inflightMu.Unlock()
+
+	for sender, entry := range inflightBySender {
+		if now.Sub(entry.startedAt) > inflightTTL {
+			delete(inflightBySender, sender)
+		}
+	}
+
+	entry, exists := inflightBySender[senderPhone]
+	if exists {
+		shouldNotify := entry.lastNoticeAt.IsZero() || now.Sub(entry.lastNoticeAt) >= busyNoticeInterval
+		if shouldNotify {
+			entry.lastNoticeAt = now
+			inflightBySender[senderPhone] = entry
+		}
+		return false, shouldNotify
+	}
+
+	inflightBySender[senderPhone] = inflightEntry{startedAt: now}
+	return true, false
+}
+
+func finishProcessing(senderPhone string) {
+	inflightMu.Lock()
+	defer inflightMu.Unlock()
+	delete(inflightBySender, senderPhone)
+}
+
+func sendPlainText(ctx context.Context, target types.JID, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	_, err := client.SendMessage(ctx, target, &waE2E.Message{
+		Conversation: proto.String(text),
+	})
+	if err != nil {
+		fmt.Println("Erro ao enviar mensagem no WhatsApp:", err)
+	}
 }
 
 func eventHandler(evt interface{}) {
@@ -189,7 +332,7 @@ func eventHandler(evt interface{}) {
 		}
 
 		text := extractText(v.Message)
-		if text == "" && v.Message.GetImageMessage() == nil && v.Message.GetDocumentMessage() == nil {
+		if text == "" && !hasSupportedMedia(v.Message) {
 			return
 		}
 
@@ -203,34 +346,24 @@ func eventHandler(evt interface{}) {
 			return
 		}
 
-		var mediaPayload []AttachmentPayload
-		if img := v.Message.GetImageMessage(); img != nil {
-			data, err := client.Download(context.Background(), img)
-			if err == nil {
-				mediaPayload = append(mediaPayload, AttachmentPayload{
-					MimeType:   img.GetMimetype(),
-					FileName:   "imagem.jpg",
-					Base64Data: base64.StdEncoding.EncodeToString(data),
-				})
-			}
-		} else if doc := v.Message.GetDocumentMessage(); doc != nil {
-			data, err := client.Download(context.Background(), doc)
-			if err == nil {
-				fileName := doc.GetFileName()
-				if fileName == "" {
-					fileName = "documento"
-				}
-				mediaPayload = append(mediaPayload, AttachmentPayload{
-					MimeType:   doc.GetMimetype(),
-					FileName:   fileName,
-					Base64Data: base64.StdEncoding.EncodeToString(data),
-				})
-			}
+		sendTarget := v.Info.Chat
+		if sendTarget.IsEmpty() {
+			sendTarget = v.Info.Sender
 		}
+		if ok, shouldNotify := tryStartProcessing(senderPhone); !ok {
+			logIgnored("processing_in_progress", v, fmt.Sprintf("phone=%s", senderPhone))
+			if shouldNotify {
+				sendPlainText(context.Background(), sendTarget, busyMessage)
+			}
+			return
+		}
+
+		mediaPayload := collectMediaPayloads(context.Background(), v.Message, v.Info.ID)
 
 		fmt.Printf("Nova mensagem de %s: %s\n", senderPhone, text)
 
 		go func() {
+			defer finishProcessing(senderPhone)
 			reqBody := BotRequest{
 				SessionID:         senderPhone,
 				Channel:           "whatsapp",
@@ -274,16 +407,7 @@ func eventHandler(evt interface{}) {
 
 			botMsg := strings.TrimSpace(botResp.BotMessage)
 			if botMsg != "" {
-				sendTarget := v.Info.Chat
-				if sendTarget.IsEmpty() {
-					sendTarget = v.Info.Sender
-				}
-				_, err = client.SendMessage(context.Background(), sendTarget, &waE2E.Message{
-					Conversation: proto.String(botMsg),
-				})
-				if err != nil {
-					fmt.Println("Erro ao enviar mensagem no WhatsApp:", err)
-				}
+				sendPlainText(context.Background(), sendTarget, botMsg)
 			}
 		}()
 	}
@@ -297,7 +421,11 @@ func main() {
 	}
 
 	dbLog := waLog.Stdout("Database", "ERROR", true)
-	connStr := "file:store.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)"
+	storePath := os.Getenv("WHATSAPP_STORE_PATH")
+	if storePath == "" {
+		storePath = "store.db"
+	}
+	connStr := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)", storePath)
 	container, err := sqlstore.New(context.Background(), "sqlite", connStr, dbLog)
 	if err != nil {
 		panic(err)

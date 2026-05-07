@@ -15,23 +15,28 @@ IMPACT_OPTIONS: tuple[ImpactOption, ...] = (
     ImpactOption(5, "Afeta setor inteiro, filial ou operação crítica"),
 )
 
-IMPACT_ICONS_BY_ID = {
-    1: "🟢",
-    2: "🟡",
-    3: "🟠",
-    4: "🔴",
-    5: "🚨",
-}
-
 
 def get_impact_by_id(impact_id: int) -> ImpactOption | None:
     return next((impact for impact in IMPACT_OPTIONS if impact.id == impact_id), None)
 
 
 def render_impact_menu() -> str:
-    lines = ["📊 **Qual é o impacto para a operação?**"]
+    lines = [
+        "**Qual é o impacto para a operação?**",
+        "",
+        "Digite no teclado o **número** da opção desejada:",
+    ]
     lines.extend(
-        f"{impact.id}. {IMPACT_ICONS_BY_ID[impact.id]} **{impact.label}**"
-        for impact in IMPACT_OPTIONS
+        f"{_keycap(impact.id)} **{impact.label}**" for impact in IMPACT_OPTIONS
     )
     return "\n".join(lines)
+
+
+def _keycap(number: int) -> str:
+    return {
+        1: "1️⃣",
+        2: "2️⃣",
+        3: "3️⃣",
+        4: "4️⃣",
+        5: "5️⃣",
+    }[number]

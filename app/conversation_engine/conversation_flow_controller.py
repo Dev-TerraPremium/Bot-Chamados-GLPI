@@ -34,6 +34,7 @@ from app.distributed_runtime.runtime_factory import (
     build_rate_limiter,
     build_session_lock,
 )
+from app.distributed_runtime.session_locks import BusySessionError
 from app.distributed_runtime.category_usage_tracker import (
     build_category_usage_tracker,
 )
@@ -160,13 +161,23 @@ class ConversationFlowController:
         media: list[dict] | None = None,
     ) -> ConversationTurnResult:
         normalized_session_id = session_id.strip() or str(uuid4())
-        with self.session_lock.lock(normalized_session_id):
-            return self._process_message_locked(
-                normalized_session_id,
-                message,
-                channel,
-                channel_identifier,
-                media,
+        try:
+            with self.session_lock.lock(normalized_session_id):
+                return self._process_message_locked(
+                    normalized_session_id,
+                    message,
+                    channel,
+                    channel_identifier,
+                    media,
+                )
+        except BusySessionError:
+            return ConversationTurnResult(
+                session_id=normalized_session_id,
+                bot_message=(
+                    "Ainda estou processando sua resposta anterior. "
+                    "Aguarde eu enviar a próxima mensagem antes de digitar outra opção."
+                ),
+                state="processing",
             )
 
     def _process_message_locked(
@@ -221,10 +232,11 @@ class ConversationFlowController:
             )
 
         sanitized_message = self.input_sanitizer.sanitize(message)
-        if media:
-            context.attachments.extend(media)
+        normalized_media = self._normalize_media_payloads(media)
+        if normalized_media:
+            context.attachments.extend(normalized_media)
             if not sanitized_message:
-                sanitized_message = "[Mídia Anexada]"
+                sanitized_message = "[Mídia anexada]"
 
         if not sanitized_message:
             return self._result(context, "Envie uma mensagem com texto para continuar.")
@@ -295,6 +307,30 @@ class ConversationFlowController:
             bot_message=bot_message,
             state="authentication"
         )
+
+    def _normalize_media_payloads(self, media: list[dict] | None) -> list[dict]:
+        normalized: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for index, item in enumerate(media or [], start=1):
+            data_base64 = str(
+                item.get("data_base64") or item.get("base64_data") or ""
+            ).strip()
+            if not data_base64:
+                continue
+            file_name = str(item.get("file_name") or f"anexo-{index}").strip()
+            mime_type = str(item.get("mime_type") or "application/octet-stream").strip()
+            dedupe_key = (file_name, hashlib.sha256(data_base64.encode()).hexdigest())
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            normalized.append(
+                {
+                    "file_name": file_name,
+                    "mime_type": mime_type,
+                    "data_base64": data_base64,
+                }
+            )
+        return normalized
 
     def _build_main_menu(self, user) -> str:
         return build_main_menu(
@@ -633,12 +669,13 @@ class ConversationFlowController:
         )
         return self._result(
             context,
-            "🤖 **Entendi que isso parece estar relacionado a:**\n\n"
+            "**Entendi que isso parece estar relacionado a:**\n\n"
             f"{category_match.category_id}. **{category_match.category_name}**\n\n"
             "Confirma essa categoria?\n\n"
-            "1. ✅ **Sim**\n"
-            "2. 🧰 **Não, manter como Outro**\n"
-            "3. 📚 **Escolher outra categoria**",
+            "Digite no teclado o **número** da opção desejada:\n"
+            "1️⃣ **Sim**\n"
+            "2️⃣ **Não, manter como Outro**\n"
+            "3️⃣ **Escolher outra categoria**",
         )
 
     def _handle_other_category_confirmation(
@@ -729,6 +766,17 @@ class ConversationFlowController:
         self.state_machine.transition_to(context, ConversationState.EVIDENCE_DECISION)
         return self._result(context, build_evidence_question())
 
+    def _is_evidence_done_command(self, message: str) -> bool:
+        normalized = self._normalize_control_text(message)
+        return normalized in {"pronto", "finalizar", "concluir", "ok"}
+
+    def _append_evidence_text(self, context: ConversationContext, message: str) -> None:
+        if message == "[Mídia anexada]":
+            return
+        current = (context.evidence or "").strip()
+        next_text = message.strip()
+        context.evidence = "\n".join(part for part in [current, next_text] if part)
+
     def _handle_evidence_decision(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
@@ -742,7 +790,8 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.EVIDENCE_COLLECTION)
             return self._result(
                 context,
-                "📎 Descreva o erro, print ou informação adicional. No simulador web, envie apenas texto.",
+                "Envie a descrição complementar, prints ou arquivos que ajudem o atendimento.\n\n"
+                "Você pode enviar vários anexos. Quando terminar, digite *pronto*.",
             )
         context.evidence = "Não informado"
         return self._prepare_final_summary(context)
@@ -750,9 +799,38 @@ class ConversationFlowController:
     def _handle_evidence_text(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
+        if self.parser.parse_choice(message) == 2 and not context.evidence and not context.attachments:
+            context.evidence = "Não informado"
+            return self._prepare_final_summary(context)
+
+        if not self._is_evidence_done_command(message):
+            self._append_evidence_text(context, message)
+            attachment_count = len(context.attachments)
+            attachment_line = (
+                f"\n\nAnexos recebidos até agora: *{attachment_count}*."
+                if attachment_count
+                else ""
+            )
+            return self._result(
+                context,
+                "Informação registrada."
+                + attachment_line
+                + "\n\nSe quiser, envie mais detalhes ou anexos. Quando terminar, digite *pronto*.",
+            )
+
+        if not context.evidence and not context.attachments:
+            return self._result(
+                context,
+                "Ainda não recebi texto nem anexo. Envie a informação adicional ou digite *2* para voltar sem evidência.",
+            )
+
+        if not context.evidence and context.attachments:
+            context.evidence = "Anexos enviados pelo WhatsApp."
+            return self._prepare_final_summary(context)
+
         organization = self._organize_description(
             context,
-            message,
+            context.evidence or "",
             purpose="evidencia_textual",
         )
         if organization.needs_clarification:
@@ -1407,11 +1485,15 @@ class ConversationFlowController:
                 "Tente novamente em instantes."
             )
 
-        lines = [f"**{title}**"]
+        lines = [
+            f"**{title}**",
+            "",
+            "Digite no teclado o **número** da opção desejada:",
+        ]
         for index, category in enumerate(categories[:5], start=1):
-            lines.append(f"{index}. **{category.display_name}**")
-        lines.append(f"{len(context.category_selection_options) + 1}. **Pesquisar categoria**")
-        lines.append(f"{len(context.category_selection_options) + 2}. **Cancelar chamado**")
+            lines.append(f"{self._keycap(index)} **{category.display_name}**")
+        lines.append(f"{self._keycap(len(context.category_selection_options) + 1)} **Pesquisar categoria**")
+        lines.append(f"{self._keycap(len(context.category_selection_options) + 2)} **Cancelar chamado**")
         return "\n".join(lines)
 
     @staticmethod
@@ -1428,6 +1510,19 @@ class ConversationFlowController:
             "is_request": category.is_request,
         }
 
+    @staticmethod
+    def _keycap(number: int) -> str:
+        keycaps = {
+            1: "1️⃣",
+            2: "2️⃣",
+            3: "3️⃣",
+            4: "4️⃣",
+            5: "5️⃣",
+            6: "6️⃣",
+            7: "7️⃣",
+        }
+        return keycaps.get(number, str(number))
+
     def _ticket_idempotency_key(self, context: ConversationContext) -> str:
         payload = {
             "session_id": context.session_id,
@@ -1442,12 +1537,27 @@ class ConversationFlowController:
         return f"{context.session_id}:{digest}"
 
     def _render_created_ticket_message(self, created_ticket: dict) -> str:
-        title = (
-            "✅ **Chamado criado com sucesso no GLPI.**"
-            if self.settings.is_glpi_real_mode
-            else "✅ **Chamado simulado criado com sucesso.**"
-        )
+        has_attachment_errors = bool(created_ticket.get("attachment_errors"))
+        if has_attachment_errors and self.settings.is_glpi_real_mode:
+            title = "⚠️ **Chamado criado no GLPI, mas há anexo pendente.**"
+        else:
+            title = (
+                "✅ **Chamado criado com sucesso no GLPI.**"
+                if self.settings.is_glpi_real_mode
+                else "✅ **Chamado simulado criado com sucesso.**"
+            )
         number_label = "Número GLPI" if self.settings.is_glpi_real_mode else "Número simulado"
+        attachment_line = ""
+        expected = int(created_ticket.get("attachments_expected_count") or 0)
+        uploaded = int(created_ticket.get("attachments_uploaded_count") or 0)
+        if expected and not has_attachment_errors:
+            attachment_line = f"\n📎 **Anexos vinculados:** {uploaded}/{expected}"
+        elif has_attachment_errors:
+            failed = ", ".join(created_ticket.get("attachment_errors") or [])
+            attachment_line = (
+                f"\n📎 **Anexos vinculados:** {uploaded}/{expected}"
+                f"\n⚠️ **Anexos pendentes:** {failed}"
+            )
         return (
             f"{title}\n\n"
             f"🔢 **{number_label}:** {created_ticket['ticket_number']}\n"
@@ -1455,6 +1565,7 @@ class ConversationFlowController:
             f"📌 **Status:** {created_ticket['status']}\n"
             f"🚦 **Gravidade:** {created_ticket['severity']}\n"
             f"📝 **Descrição organizada:** {created_ticket['description']}"
+            f"{attachment_line}"
         )
 
     def _result(

@@ -94,11 +94,22 @@ class FakeRealGLPIClient:
             evidence=ticket_data["evidence"],
             opening_mode=ticket_data["opening_mode"],
             created_at="2026-05-07T00:00:00Z",
+            attachments_expected_count=len(ticket_data.get("attachments") or []),
+            attachments_uploaded_count=len(ticket_data.get("attachments") or []),
         )
 
 
-def send(controller: ConversationFlowController, session_id: str, message: str) -> dict:
-    result = controller.process_message(session_id=session_id, message=message)
+def send(
+    controller: ConversationFlowController,
+    session_id: str,
+    message: str,
+    media: list[dict] | None = None,
+) -> dict:
+    result = controller.process_message(
+        session_id=session_id,
+        message=message,
+        media=media,
+    )
     return {
         "session_id": result.session_id,
         "bot_message": result.bot_message,
@@ -276,3 +287,66 @@ def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() 
     assert glpi_client.payload["glpi_input"]["itilcategories_id"] == 544
     assert glpi_client.payload["glpi_input"]["_users_id_requester"] == 266
     assert usage_tracker.incremented == [544]
+
+
+def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment() -> None:
+    session_id = str(uuid4())
+    glpi_client = FakeRealGLPIClient()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Evidência registrada."),
+        glpi_client=glpi_client,
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = FakeUsageTracker()
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "wifi caindo no deposito")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    send(controller, session_id, "TI")
+    evidence_prompt = send(controller, session_id, "1")
+    assert "vários anexos" in evidence_prompt["bot_message"]
+
+    evidence_response = send(
+        controller,
+        session_id,
+        "segue o print do erro",
+        media=[
+            {
+                "file_name": "erro.png",
+                "mime_type": "image/png",
+                "data_base64": "ZmFrZQ==",
+            }
+        ],
+    )
+    assert evidence_response["state"] == "evidence_collection"
+    assert "Informação registrada" in evidence_response["bot_message"]
+
+    summary_response = send(controller, session_id, "pronto")
+    assert summary_response["state"] == "final_confirmation"
+
+    created_response = send(controller, session_id, "1")
+    assert created_response["created_ticket"]["attachments_expected_count"] == 1
+    assert glpi_client.payload["attachments"] == [
+        {
+            "file_name": "erro.png",
+            "mime_type": "image/png",
+            "data_base64": "ZmFrZQ==",
+        }
+    ]

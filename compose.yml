@@ -2,8 +2,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: bot-chamados-redis
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -15,6 +19,7 @@ services:
     container_name: bot-chamados-ollama
     volumes:
       - ollama-data:/root/.ollama
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
@@ -44,6 +49,7 @@ services:
       - .env.docker
     ports:
       - "8000:8000"
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
@@ -81,6 +87,7 @@ services:
         condition: service_healthy
       ollama-pull:
         condition: service_completed_successfully
+    restart: unless-stopped
     command:
       [
         "python",
@@ -105,6 +112,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
     command:
       [
         "python",
@@ -120,5 +128,25 @@ services:
         "--loglevel=INFO",
       ]
 
+  whatsapp:
+    build:
+      context: ./whatsapp_connector
+    container_name: bot-chamados-whatsapp
+    env_file:
+      - .env.docker
+    environment:
+      BOT_API_URL: http://web:8000/api/conversation/message
+      WHATSAPP_STORE_PATH: /data/store.db
+    volumes:
+      - whatsapp-store:/data
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
 volumes:
+  redis-data:
   ollama-data:
+  whatsapp-store:

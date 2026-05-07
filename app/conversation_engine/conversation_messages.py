@@ -4,22 +4,24 @@ from app.authentication_and_identity.authenticated_user_model import Authenticat
 def build_main_menu(user: AuthenticatedUser, opening_only: bool = False) -> str:
     if opening_only:
         return (
-            f"Ola, **{user.first_name}**.\n"
-            f"Voce esta autenticado como **{user.login}**.\n\n"
+            f"Olá, **{user.first_name}**.\n"
+            f"Você está autenticado como **{user.login}**.\n\n"
             "Terra Premium | Assistente de Chamados TI\n"
             "Como posso te ajudar hoje?\n\n"
-            "1. **Abrir chamado**\n"
-            "2. **Sair**"
+            "Digite no teclado o **número** da opção desejada:\n"
+            "1️⃣ **Abrir chamado**\n"
+            "2️⃣ **Sair**"
         )
     return (
-        f"👋 Olá, **{user.first_name}**.\n"
+        f"Olá, **{user.first_name}**.\n"
         f"Você está autenticado como **{user.login}**.\n\n"
-        "🌾 **Terra Premium | Assistente de Chamados TI**\n"
+        "Terra Premium | Assistente de Chamados TI\n"
         "Como posso te ajudar hoje?\n\n"
-        "1. 🆕 **Abrir chamado**\n"
-        "2. 🔎 **Consultar meus chamados**\n"
-        "3. 📝 **Complementar chamado existente**\n"
-        "4. 🚪 **Sair**"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Abrir chamado**\n"
+        "2️⃣ **Consultar meus chamados**\n"
+        "3️⃣ **Complementar chamado existente**\n"
+        "4️⃣ **Sair**"
     )
 
 
@@ -32,12 +34,15 @@ def build_open_ticket_prompt() -> str:
         "✅ Você poderá **confirmar a categoria sugerida** ou 📚 **escolher outra manualmente**."
     )
 
+
 def build_ticket_type_prompt() -> str:
     return (
-        "🤔 **Você está com um problema ou precisa solicitar algo novo?**\n\n"
-        "1. 💥 **Estou com um problema** (Incidente / Algo parou)\n"
-        "2. ➕ **Quero solicitar algo** (Requisição / Novo acesso / Novo equipamento)"
+        "**Você está com um problema ou precisa solicitar algo novo?**\n\n"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Estou com um problema** (Incidente / Algo parou)\n"
+        "2️⃣ **Quero solicitar algo** (Requisição / Novo acesso / Novo equipamento)"
     )
+
 
 def build_description_clarification_message(
     question: str,
@@ -58,26 +63,28 @@ def build_category_assignment_message(
     category_name: str,
 ) -> str:
     return (
-        "🤖 **Organizei sua solicitação e encontrei uma categoria provável:**\n\n"
-        f"📝 **Descrição organizada:** {organized_text}\n\n"
-        f"📚 **Categoria sugerida:** {category_id}. **{category_name}**\n\n"
+        "**Organizei sua solicitação e encontrei uma categoria provável:**\n\n"
+        f"**Descrição organizada:** {organized_text}\n\n"
+        f"**Categoria sugerida:** {category_id}. **{category_name}**\n\n"
         "Como deseja seguir?\n\n"
-        "1. ✅ **Usar essa categoria**\n"
-        "2. 📚 **Escolher categoria manualmente**\n"
-        "3. 🧰 **Manter como Outro**\n"
-        "4. ✍️ **Reescrever descrição**\n"
-        "5. ❌ **Cancelar chamado**"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Usar essa categoria**\n"
+        "2️⃣ **Escolher categoria manualmente**\n"
+        "3️⃣ **Manter como Outro**\n"
+        "4️⃣ **Reescrever descrição**\n"
+        "5️⃣ **Cancelar chamado**"
     )
 
 
 def build_query_menu() -> str:
     return (
-        "🔎 **Consultar chamados:**\n\n"
-        "1. 🟢 **Meus chamados abertos**\n"
-        "2. 🛠️ **Meus chamados em atendimento**\n"
-        "3. 🕘 **Meus últimos chamados**\n"
-        "4. 🔢 **Consultar pelo número do chamado**\n"
-        "5. ↩️ **Voltar ao menu**"
+        "**Consultar chamados:**\n\n"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Meus chamados abertos**\n"
+        "2️⃣ **Meus chamados em atendimento**\n"
+        "3️⃣ **Meus últimos chamados**\n"
+        "4️⃣ **Consultar pelo número do chamado**\n"
+        "5️⃣ **Voltar ao menu**"
     )
 
 
@@ -90,13 +97,14 @@ def build_invalid_option_message() -> str:
 
 def build_description_review_message(organized_text: str) -> str:
     return (
-        "🤖 **Descrição final do chamado:**\n\n"
+        "**Descrição final do chamado:**\n\n"
         f"{organized_text}\n\n"
         "Está correto?\n\n"
-        "1. ✅ **Sim, continuar**\n"
-        "2. ✍️ **Não, quero reescrever**\n"
-        "3. 📌 **Manter exatamente como digitei**\n"
-        "4. ❌ **Cancelar chamado**"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Sim, continuar**\n"
+        "2️⃣ **Não, quero reescrever**\n"
+        "3️⃣ **Manter exatamente como digitei**\n"
+        "4️⃣ **Cancelar chamado**"
     )
 
 
@@ -113,19 +121,21 @@ def build_location_prompt() -> str:
 
 def build_evidence_question() -> str:
     return (
-        "📎 **Você possui erro, print ou informação adicional?**\n\n"
-        "1. ✅ **Sim, vou descrever**\n"
-        "2. ➖ **Não**"
+        "**Você possui erro, print ou informação adicional?**\n\n"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Sim, vou descrever**\n"
+        "2️⃣ **Não**"
     )
 
 
 def build_complement_review_message(rewritten_text: str) -> str:
     return (
-        "🤖 **Organizei seu complemento assim:**\n\n"
+        "**Organizei seu complemento assim:**\n\n"
         f"{rewritten_text}\n\n"
         "Está correto?\n\n"
-        "1. ✅ **Sim, adicionar acompanhamento**\n"
-        "2. ✍️ **Não, quero reescrever**\n"
-        "3. 📌 **Manter exatamente como digitei**\n"
-        "4. ❌ **Cancelar**"
+        "Digite no teclado o **número** da opção desejada:\n"
+        "1️⃣ **Sim, adicionar acompanhamento**\n"
+        "2️⃣ **Não, quero reescrever**\n"
+        "3️⃣ **Manter exatamente como digitei**\n"
+        "4️⃣ **Cancelar**"
     )

@@ -126,11 +126,12 @@ def get_category_by_name(category_name: str) -> CategoryOption | None:
 
 
 def render_category_menu() -> str:
-    lines = ["📚 **Escolha a categoria manualmente:**"]
-    lines.extend(
-        f"{category.id}. {CATEGORY_ICONS_BY_ID[category.id]} **{category.name}**"
-        for category in CATEGORY_OPTIONS
-    )
+    lines = [
+        "**Escolha a categoria manualmente:**",
+        "",
+        "Digite no teclado o **número** da opção desejada:",
+    ]
+    lines.extend(f"{_keycap(category.id)} **{category.name}**" for category in CATEGORY_OPTIONS)
     return "\n".join(lines)
 
 
@@ -143,3 +144,20 @@ def render_description_prompt(category: CategoryOption) -> str:
         f"**Exemplos:**\n{examples}\n\n"
         "Digite em poucas palavras o que aconteceu ou o que você precisa:"
     )
+
+
+def _keycap(number: int) -> str:
+    return {
+        1: "1️⃣",
+        2: "2️⃣",
+        3: "3️⃣",
+        4: "4️⃣",
+        5: "5️⃣",
+        6: "6️⃣",
+        7: "7️⃣",
+        8: "8️⃣",
+        9: "9️⃣",
+        10: "🔟",
+        11: "1️⃣1️⃣",
+        12: "1️⃣2️⃣",
+    }[number]

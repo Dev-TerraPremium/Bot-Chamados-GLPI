@@ -28,7 +28,8 @@ class TicketSummaryBuilder:
             f"📎 **Evidência:** {summary.evidence}\n"
             f"🏷️ **Título sugerido:** {summary.suggested_title}\n\n"
             "Deseja abrir o chamado?\n\n"
-            "1. ✅ **Sim, abrir chamado**\n"
-            "2. ✏️ **Corrigir informações**\n"
-            "3. ❌ **Cancelar**"
+            "Digite no teclado o **número** da opção desejada:\n"
+            "1️⃣ **Sim, abrir chamado**\n"
+            "2️⃣ **Corrigir informações**\n"
+            "3️⃣ **Cancelar**"
         )

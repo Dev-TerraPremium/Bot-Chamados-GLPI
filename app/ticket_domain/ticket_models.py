@@ -64,6 +64,9 @@ class TicketCreated:
     opening_mode: str
     created_at: str
     followups: list[TicketFollowup] = field(default_factory=list)
+    attachments_expected_count: int = 0
+    attachments_uploaded_count: int = 0
+    attachment_errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -92,6 +95,11 @@ class TicketCreated:
             opening_mode=str(data["opening_mode"]),
             created_at=str(data["created_at"]),
             followups=followups,
+            attachments_expected_count=int(data.get("attachments_expected_count") or 0),
+            attachments_uploaded_count=int(data.get("attachments_uploaded_count") or 0),
+            attachment_errors=[
+                str(error) for error in data.get("attachment_errors", [])
+            ],
         )
 
 

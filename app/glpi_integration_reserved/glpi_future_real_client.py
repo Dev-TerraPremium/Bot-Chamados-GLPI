@@ -63,13 +63,20 @@ class GLPIRealClient(GLPIClientInterface):
         ticket_id = int(response.get("id") or response.get("item", {}).get("id") or 0)
         if not ticket_id:
             raise GLPIClientError("GLPI nao retornou ID do chamado criado.")
+        attachments = ticket_data.get("attachments") or []
         attachment_errors = self._attach_documents(
             ticket_id,
-            ticket_data.get("attachments") or [],
+            attachments,
         )
         if attachment_errors:
             self._create_attachment_failure_followup(ticket_id, attachment_errors)
-        return self._created_ticket_from_payload(ticket_id, ticket_data)
+        return self._created_ticket_from_payload(
+            ticket_id,
+            ticket_data,
+            attachments_expected_count=len(attachments),
+            attachments_uploaded_count=len(attachments) - len(attachment_errors),
+            attachment_errors=attachment_errors,
+        )
 
     def get_my_tickets(self, user_id: int) -> list[TicketCreated]:
         ticket_ids = self._search_ticket_ids_for_requester(user_id)
@@ -464,7 +471,13 @@ class GLPIRealClient(GLPIClientInterface):
         )
 
     @staticmethod
-    def _created_ticket_from_payload(ticket_id: int, ticket_data: dict) -> TicketCreated:
+    def _created_ticket_from_payload(
+        ticket_id: int,
+        ticket_data: dict,
+        attachments_expected_count: int = 0,
+        attachments_uploaded_count: int = 0,
+        attachment_errors: list[str] | None = None,
+    ) -> TicketCreated:
         return TicketCreated(
             ticket_number=ticket_id,
             title=ticket_data["title"],
@@ -480,6 +493,9 @@ class GLPIRealClient(GLPIClientInterface):
             evidence=ticket_data.get("evidence") or "Não informado",
             opening_mode=ticket_data["opening_mode"],
             created_at=DateTimeProvider.utc_now_iso(),
+            attachments_expected_count=attachments_expected_count,
+            attachments_uploaded_count=attachments_uploaded_count,
+            attachment_errors=attachment_errors or [],
         )
 
     @staticmethod

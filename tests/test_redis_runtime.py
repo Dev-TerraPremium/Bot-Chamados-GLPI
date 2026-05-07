@@ -1,10 +1,12 @@
 import fakeredis
+import pytest
 
 from app.authentication_and_identity.authenticated_user_model import AuthenticatedUser
 from app.conversation_engine.conversation_context import ConversationContext
 from app.distributed_runtime.idempotency_store import RedisIdempotencyStore
 from app.distributed_runtime.redis_conversation_store import RedisConversationStore
 from app.distributed_runtime.redis_rate_limiter import RedisRateLimiter
+from app.distributed_runtime.session_locks import BusySessionError, RedisSessionLock
 
 
 def test_redis_conversation_store_round_trips_context() -> None:
@@ -68,3 +70,13 @@ def test_redis_idempotency_store_prevents_duplicate_reservation() -> None:
 
     store.store_result("abc", {"ticket_number": 123})
     assert store.get_result("abc") == {"ticket_number": 123}
+
+
+def test_redis_session_lock_fails_fast_when_conversation_is_busy() -> None:
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    lock = RedisSessionLock(redis_client, timeout_seconds=60)
+
+    with lock.lock("s1"):
+        with pytest.raises(BusySessionError):
+            with lock.lock("s1"):
+                pass

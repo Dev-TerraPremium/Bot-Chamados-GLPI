@@ -2,7 +2,11 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from redis import Redis
-from redis.exceptions import LockError
+from redis.exceptions import LockError, RedisError
+
+
+class BusySessionError(RuntimeError):
+    pass
 
 
 class NoOpSessionLock:
@@ -21,15 +25,15 @@ class RedisSessionLock:
         lock = self.redis_client.lock(
             f"lock:conversation:{session_id}",
             timeout=self.timeout_seconds,
-            blocking_timeout=self.timeout_seconds,
+            blocking_timeout=0,
         )
-        acquired = lock.acquire(blocking=True)
+        acquired = lock.acquire(blocking=False)
         if not acquired:
-            raise RuntimeError("Nao foi possivel obter lock da conversa.")
+            raise BusySessionError("Conversa ja esta em processamento.")
         try:
             yield
         finally:
             try:
                 lock.release()
-            except LockError:
+            except (LockError, RedisError):
                 pass
