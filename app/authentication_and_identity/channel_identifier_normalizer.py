@@ -36,12 +36,12 @@ class ChannelIdentifierNormalizer:
     @staticmethod
     def normalize_cpf(cpf: str) -> str:
         """
-        Normalizes a CPF by removing dots, hyphens, and spaces.
-        Example: '099.150.671-51' -> '09915067151'
+        Normalizes a CPF by keeping only digits.
+        Example: 'CPF: 099.150.671-51' -> '09915067151'
         """
         if not cpf:
             return ""
-        return re.sub(r"[\.\-\s]", "", cpf)
+        return re.sub(r"\D", "", cpf)
 
     @staticmethod
     def mask_phone(phone: str) -> str:

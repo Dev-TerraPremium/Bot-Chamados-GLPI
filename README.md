@@ -127,6 +127,23 @@ Encerramento:
 docker compose down
 ```
 
+## Operacao no Proxmox/LXC
+
+No ambiente remoto, use o painel terminal `botctl`.
+
+```bash
+botctl
+botctl status
+botctl doctor
+botctl logs whatsapp -f
+botctl allowlist show
+botctl redis delete-link 66999990980
+```
+
+O deploy instala `botctl` em `/usr/local/bin` apontando para
+`/opt/bot-chamados-glpi/scripts/botctl.py`. A base de conhecimento operacional
+completa esta em `docs/OPERATIONS_KB.md`.
+
 ## Testes
 
 ```bash

@@ -1,0 +1,6 @@
+.git
+Dockerfile
+store.db
+store.db-*
+*.db
+*.db-*

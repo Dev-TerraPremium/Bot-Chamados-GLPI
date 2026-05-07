@@ -7,28 +7,27 @@ from app.glpi_integration_reserved.glpi_future_real_client import GLPIRealClient
 from app.glpi_integration_reserved.glpi_integration_config import GLPIIntegrationConfig
 
 
-def build_client(rows: list[dict]) -> GLPIRealClient:
+def build_client(rows: list[dict], search_options: dict | None = None) -> GLPIRealClient:
+    user_search_options = search_options or {
+        "2": {"name": "ID", "field": "id"},
+        "1": {"name": "Login", "field": "name"},
+        "9": {"name": "First name", "field": "firstname"},
+        "34": {"name": "Surname", "field": "realname"},
+        "5": {"name": "Phone", "field": "phone"},
+        "6": {"name": "Phone 2", "field": "phone2"},
+        "7": {"name": "Mobile phone", "field": "mobile"},
+        "8": {"name": "Registration number", "field": "registration_number"},
+        "10": {"name": "Active", "field": "is_active"},
+        "11": {"name": "Email", "field": "email"},
+    }
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/initSession"):
             return httpx.Response(200, json={"session_token": "session"})
         if request.url.path.endswith("/changeActiveProfile") or request.url.path.endswith("/changeActiveEntities"):
             return httpx.Response(200, json={})
         if request.url.path.endswith("/listSearchOptions/User"):
-            return httpx.Response(
-                200,
-                json={
-                    "2": {"name": "ID", "field": "id"},
-                    "1": {"name": "Login", "field": "name"},
-                    "9": {"name": "First name", "field": "firstname"},
-                    "34": {"name": "Surname", "field": "realname"},
-                    "5": {"name": "Phone", "field": "phone"},
-                    "6": {"name": "Phone 2", "field": "phone2"},
-                    "7": {"name": "Mobile phone", "field": "mobile"},
-                    "8": {"name": "Registration number", "field": "registration_number"},
-                    "10": {"name": "Active", "field": "is_active"},
-                    "11": {"name": "Email", "field": "email"},
-                },
-            )
+            return httpx.Response(200, json=user_search_options)
         if request.url.path.endswith("/search/User"):
             value = request.url.params.get("criteria[0][value]", "")
             matched = [
@@ -81,6 +80,67 @@ def test_glpi_real_user_lookup_matches_phone_and_cpf_prefix() -> None:
     assert len(candidates) == 1
     assert candidates[0].id == 266
     assert candidates[0].name == "pedro.torres"
+
+
+def test_glpi_real_user_lookup_matches_formatted_phone_and_cpf_text() -> None:
+    lookup = GLPIRealUserIdentityLookupService(
+        build_client(
+            [
+                {
+                    "2": 266,
+                    "1": "pedro.torres",
+                    "9": "Pedro",
+                    "34": "Americo Paletot de Alcantara Torres",
+                    "5": "+55 (66) 99999-0980",
+                    "8": "CPF: 099.150.671-51",
+                    "10": 1,
+                }
+            ]
+        )
+    )
+
+    candidates = lookup.find_active_candidates_by_channel_phone_and_cpf_prefix(
+        "5566999990980",
+        "0991",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].id == 266
+
+
+def test_glpi_real_user_lookup_accepts_cpf_search_option_field() -> None:
+    lookup = GLPIRealUserIdentityLookupService(
+        build_client(
+            [
+                {
+                    "2": 266,
+                    "1": "pedro.torres",
+                    "9": "Pedro",
+                    "34": "Americo Paletot de Alcantara Torres",
+                    "5": "66999990980",
+                    "42": "099.150.671-51",
+                    "10": 1,
+                }
+            ],
+            search_options={
+                "2": {"name": "ID", "field": "id"},
+                "1": {"name": "Login", "field": "name"},
+                "9": {"name": "First name", "field": "firstname"},
+                "34": {"name": "Surname", "field": "realname"},
+                "5": {"name": "Phone", "field": "phone"},
+                "42": {"name": "CPF", "field": "cpf"},
+                "10": {"name": "Active", "field": "is_active"},
+            },
+        )
+    )
+
+    candidates = lookup.find_active_candidates_by_channel_phone_and_cpf_prefix(
+        "66999990980",
+        "0991",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].id == 266
 
 
 def test_glpi_real_user_lookup_returns_multiple_candidates_for_ambiguous_phone() -> None:

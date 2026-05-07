@@ -56,6 +56,15 @@ if [ ! -f "$REMOTE_DIR/.env.docker" ]; then
 fi
 ok ".env.docker presente."
 
+log "Instalando painel terminal botctl..."
+if [ -f "$REMOTE_DIR/scripts/botctl.py" ]; then
+    chmod +x "$REMOTE_DIR/scripts/botctl.py"
+    ln -sf "$REMOTE_DIR/scripts/botctl.py" /usr/local/bin/botctl
+    ok "botctl instalado. Use: botctl"
+else
+    warn "scripts/botctl.py nao encontrado; pulando instalacao do botctl."
+fi
+
 # Garante ALLOWED_NUMBERS correto
 if ! grep -q "ALLOWED_NUMBERS=66999990980" "$REMOTE_DIR/.env.docker"; then
     warn "ALLOWED_NUMBERS não encontrado ou diferente — corrigindo..."
@@ -92,6 +101,10 @@ curl -sf http://127.0.0.1:8000/health/glpi  | python3 -m json.tool 2>/dev/null |
 echo ""
 echo "============================================================"
 echo " Deploy concluído! IP: 192.168.2.110:8000"
+echo " Painel terminal no LXC:"
+echo "   botctl"
+echo "   botctl status"
+echo "   botctl logs whatsapp -f"
 echo " Para ver o QR do WhatsApp:"
 echo "   docker compose -f $REMOTE_DIR/compose.yml logs -f whatsapp"
 echo "============================================================"

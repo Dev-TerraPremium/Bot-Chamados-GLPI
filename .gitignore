@@ -27,6 +27,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Generated deploy artifacts
+bot.tar.gz
+
 # WhatsApp local session state
 whatsapp_connector/store.db
 whatsapp_connector/store.db-*

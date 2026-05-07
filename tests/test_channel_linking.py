@@ -14,6 +14,7 @@ def test_normalize_phone():
 def test_normalize_cpf():
     assert ChannelIdentifierNormalizer.normalize_cpf("099.150.671-51") == "09915067151"
     assert ChannelIdentifierNormalizer.normalize_cpf(" 123 . 456 - 78") == "12345678"
+    assert ChannelIdentifierNormalizer.normalize_cpf("CPF: 099.150.671-51") == "09915067151"
 
 def test_cpf_partial_validation_match():
     validator = DocumentPartialValidator(pepper="test", prefix_length=4)

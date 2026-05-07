@@ -60,8 +60,9 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
         if not target_variants:
             return []
 
+        phone_search_terms = self._phone_search_terms(target_variants)
         rows_by_user_id: dict[int, dict] = {}
-        for variant in target_variants:
+        for variant in phone_search_terms:
             for phone_field in field_set["phone_fields"]:
                 try:
                     response = self.client.search(
@@ -85,8 +86,19 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
                     if user_id:
                         rows_by_user_id[user_id] = row
 
+        logger.info(
+            "glpi_user_phone_search_completed",
+            extra={
+                "phone_last4": self._last4(phone),
+                "searched_terms_count": len(phone_search_terms),
+                "rows_count": len(rows_by_user_id),
+            },
+        )
+
         validator = DocumentPartialValidator(pepper="", prefix_length=len(cpf_prefix))
         candidates: list[GLPIUserIdentity] = []
+        active_phone_matches = 0
+        cpf_mismatches = 0
         for row in rows_by_user_id.values():
             identity = self._identity_from_row(row, field_set)
             if identity is None or not identity.is_active:
@@ -98,11 +110,24 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
                 )
             if not target_variants.intersection(candidate_phone_variants):
                 continue
+            active_phone_matches += 1
             full_cpf = ChannelIdentifierNormalizer.normalize_cpf(
                 identity.registration_number
             )
             if validator.compare_partial_with_full(cpf_prefix, full_cpf):
                 candidates.append(identity)
+            else:
+                cpf_mismatches += 1
+
+        logger.info(
+            "glpi_user_identity_lookup_completed",
+            extra={
+                "phone_last4": self._last4(phone),
+                "active_phone_matches": active_phone_matches,
+                "cpf_mismatches": cpf_mismatches,
+                "candidates_count": len(candidates),
+            },
+        )
         return candidates
 
     def _get_resolver(self) -> GLPISearchOptionsResolver:
@@ -118,21 +143,36 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
     ) -> dict[str, object]:
         phone_fields = resolver.find_many(
             fields=("phone", "phone2", "mobile"),
-            names=("Phone", "Phone 2", "Mobile phone", "Celular"),
+            names=(
+                "Phone",
+                "Phone 2",
+                "Mobile phone",
+                "Celular",
+                "Telefone",
+                "Telefone 2",
+            ),
         )
         if not phone_fields:
             raise ValueError("Nenhum campo de telefone encontrado no GLPI.")
 
+        registration_number = resolver.require_one(
+            fields=("registration_number", "cpf"),
+            names=(
+                "Administrative number",
+                "Registration number",
+                "Matricula",
+                "Matrícula",
+                "CPF",
+                "Documento",
+            ),
+        )
         fields: dict[str, object] = {
             "id": resolver.require_one(fields=("id",), names=("ID",)),
             "name": resolver.require_one(fields=("name",), names=("Login", "Name")),
             "firstname": resolver.find_one(fields=("firstname",), names=("First name", "Nome")),
             "realname": resolver.find_one(fields=("realname",), names=("Surname", "Sobrenome")),
             "email": resolver.find_one(fields=("email",), names=("Email", "E-mail")),
-            "registration_number": resolver.require_one(
-                fields=("registration_number",),
-                names=("Administrative number", "Registration number", "Matricula"),
-            ),
+            "registration_number": registration_number,
             "is_active": resolver.find_one(fields=("is_active",), names=("Active", "Ativo")),
             "phone_fields": phone_fields,
         }
@@ -160,6 +200,17 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
         for index, field_id in enumerate(forced_display_ids):
             params[f"forcedisplay[{index}]"] = field_id
         return params
+
+    @staticmethod
+    def _phone_search_terms(target_variants: set[str]) -> list[str]:
+        terms: list[str] = []
+        for variant in sorted(target_variants, key=len, reverse=True):
+            terms.append(variant)
+            if len(variant) >= 8:
+                terms.append(variant[-8:])
+            if len(variant) >= 4:
+                terms.append(variant[-4:])
+        return list(dict.fromkeys(term for term in terms if term))
 
     def _identity_from_row(
         self,
@@ -218,6 +269,11 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
             if key in row:
                 return row[key]
         return None
+
+    @staticmethod
+    def _last4(value: str) -> str:
+        digits = "".join(ch for ch in str(value) if ch.isdigit())
+        return digits[-4:] if len(digits) >= 4 else digits
 
 
 class MockGLPIUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):

@@ -10,13 +10,16 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$GoExe = "C:\Program Files\Go\bin\go.exe"
 $KeepAlivePidFile = Join-Path $env:TEMP "bot-chamados-wsl-keepalive.pid"
 
 function Invoke-Ubuntu {
     param([string]$Command)
     wsl -d $UbuntuDistro -u root sh -lc $Command
+}
+
+function ConvertTo-ShellSingleQuoted {
+    param([string]$Value)
+    return "'" + ($Value -replace "'", "'\''") + "'"
 }
 
 function Wait-HttpOk {
@@ -62,10 +65,6 @@ if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     throw "WSL nao encontrado no Windows."
 }
 
-if (-not (Test-Path $GoExe)) {
-    throw "Go nao encontrado em $GoExe."
-}
-
 if ([string]::IsNullOrWhiteSpace($AllowedNumbers)) {
     throw "AllowedNumbers esta vazio. Por seguranca, informe pelo menos um numero ou edite este script conscientemente."
 }
@@ -88,8 +87,13 @@ if ($shouldStartKeepAlive) {
     Start-Sleep -Seconds 3
 }
 
+$logIgnored = if ([string]::IsNullOrWhiteSpace($env:LOG_IGNORED_MESSAGES)) { "false" } else { $env:LOG_IGNORED_MESSAGES }
+$allowedShell = ConvertTo-ShellSingleQuoted $AllowedNumbers
+$logShell = ConvertTo-ShellSingleQuoted $logIgnored
+$services = if ($SkipWhatsApp) { "redis ollama ollama-pull web worker-ai worker-glpi" } else { "" }
+
 Write-Host "[2/4] Subindo Docker Compose dentro do Ubuntu..."
-Invoke-Ubuntu "systemctl start docker >/dev/null 2>&1 || service docker start >/dev/null 2>&1 || true; cd '$ProjectLinuxPath' && docker compose up -d"
+Invoke-Ubuntu "systemctl start docker >/dev/null 2>&1 || service docker start >/dev/null 2>&1 || true; cd '$ProjectLinuxPath' && ALLOWED_NUMBERS=$allowedShell ALLOW_ALL_NUMBERS=false LOG_IGNORED_MESSAGES=$logShell docker compose up -d $services"
 
 Write-Host "[3/4] Aguardando API FastAPI..."
 Wait-HttpOk -Url "http://127.0.0.1:8000/health" -Seconds 120
@@ -99,15 +103,6 @@ if ($SkipWhatsApp) {
     exit 0
 }
 
-Write-Host "[4/4] Iniciando conector WhatsApp com sandbox ativo..."
+Write-Host "[4/4] Conferindo conector WhatsApp dockerizado com sandbox ativo..."
 Write-Host "Numeros permitidos: $AllowedNumbers"
-$env:ALLOWED_NUMBERS = $AllowedNumbers
-$env:BOT_API_URL = $ApiUrl
-Remove-Item Env:\ALLOW_ALL_NUMBERS -ErrorAction SilentlyContinue
-
-Push-Location (Join-Path $ProjectRoot "whatsapp_connector")
-try {
-    & $GoExe run main.go
-} finally {
-    Pop-Location
-}
+Invoke-Ubuntu "cd '$ProjectLinuxPath' && docker compose ps whatsapp && docker compose logs --tail=80 whatsapp"
