@@ -1,3 +1,5 @@
+import pytest
+
 from app.glpi_integration_reserved.glpi_category_mapping_service import (
     GLPICategoryMappingService,
 )
@@ -74,3 +76,29 @@ def test_glpi_ticket_payload_builder_uses_real_category_and_authenticated_reques
     assert payload["glpi_input"]["itilcategories_id"] == 544
     assert payload["glpi_input"]["_users_id_requester"] == 266
     assert payload["category_name"] == "INFRAESTRUTURA > REDES > WI-FI"
+
+
+def test_glpi_ticket_payload_builder_requires_real_category_in_real_mode() -> None:
+    draft = TicketDraft(
+        requester_name="Pedro Torres",
+        requester_login="pedro.torres",
+        requester_email="pedro.torres@terrapremium.com.br",
+        glpi_user_id=266,
+        channel="whatsapp",
+        opening_mode="Abertura assistida",
+        category_id=12,
+        category_name="Outro",
+        description="Teste controlado.",
+        impact_id=1,
+        impact_label="Duvida simples",
+        severity="Baixa",
+        location="TI",
+        evidence="Nao informado",
+        title="Teste controlado",
+    )
+
+    with pytest.raises(ValueError, match="Categoria GLPI real obrigatoria"):
+        GLPITicketPayloadBuilder(
+            default_entity_id=3,
+            require_glpi_category=True,
+        ).build_from_ticket_draft(draft)

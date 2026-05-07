@@ -12,14 +12,19 @@ class GLPITicketPayloadBuilder:
         category_mapping_service: GLPICategoryMappingService | None = None,
         default_entity_id: int = 0,
         default_requester_user_id: int = 0,
+        require_glpi_category: bool = False,
     ) -> None:
         self.category_mapping_service = (
             category_mapping_service or GLPICategoryMappingService()
         )
         self.default_entity_id = default_entity_id
         self.default_requester_user_id = default_requester_user_id
+        self.require_glpi_category = require_glpi_category
 
     def build_from_ticket_draft(self, draft: TicketDraft) -> dict:
+        if self.require_glpi_category and not draft.glpi_category_id:
+            raise ValueError("Categoria GLPI real obrigatoria para abertura em producao.")
+
         category_mapping = None
         if not draft.glpi_category_id:
             category_mapping = self.category_mapping_service.map_internal_category_to_glpi(

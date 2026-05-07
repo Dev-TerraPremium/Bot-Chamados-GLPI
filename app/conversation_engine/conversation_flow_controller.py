@@ -136,6 +136,7 @@ class ConversationFlowController:
         self.glpi_payload_builder = GLPITicketPayloadBuilder(
             default_entity_id=self.settings.glpi_default_entity_id,
             default_requester_user_id=self.settings.glpi_default_requester_user_id,
+            require_glpi_category=self.settings.is_glpi_real_mode,
         )
         self.description_organizer = description_organizer or (
             CeleryDescriptionOrganizer(self.settings)
@@ -496,7 +497,14 @@ class ConversationFlowController:
             return self._result(context, validation.message)
 
         if validation.choice == 1:
-            self._apply_pending_category(context)
+            if not self._apply_pending_category(context):
+                self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+                return self._result(
+                    context,
+                    "Nao consegui validar a categoria sugerida no GLPI. "
+                    "Escolha uma categoria real antes de abrir o chamado.\n\n"
+                    + self._render_real_category_menu(context),
+                )
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
             return self._result(
                 context,
@@ -640,7 +648,14 @@ class ConversationFlowController:
         if not validation.is_valid:
             return self._result(context, validation.message)
         if validation.choice == 1:
-            self._apply_pending_category(context)
+            if not self._apply_pending_category(context):
+                self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+                return self._result(
+                    context,
+                    "Nao consegui validar a categoria sugerida no GLPI. "
+                    "Escolha uma categoria real antes de abrir o chamado.\n\n"
+                    + self._render_real_category_menu(context),
+                )
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
             return self._result(
                 context,
@@ -956,6 +971,14 @@ class ConversationFlowController:
         )
 
     def _create_ticket(self, context: ConversationContext) -> ConversationTurnResult:
+        if self.settings.is_glpi_real_mode and not context.selected_glpi_category_id:
+            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+            return self._result(
+                context,
+                "Antes de abrir no GLPI, preciso de uma categoria real validada.\n\n"
+                + self._render_real_category_menu(context),
+            )
+
         idempotency_key = self._ticket_idempotency_key(context)
         existing_ticket = self.idempotency_store.get_result(idempotency_key)
         if existing_ticket:
@@ -979,7 +1002,7 @@ class ConversationFlowController:
             draft = self.ticket_factory.create_draft_from_context(context)
             payload = self.glpi_payload_builder.build_from_ticket_draft(draft)
             created_ticket = self.glpi_client.create_ticket(payload)
-        except GLPIClientError:
+        except (GLPIClientError, ValueError):
             logger.exception(
                 "glpi_ticket_creation_failed",
                 extra={"session_id": context.session_id},
@@ -1348,14 +1371,16 @@ class ConversationFlowController:
         context.selected_category_id = category.id
         context.selected_category_name = category.name
 
-    def _apply_pending_category(self, context: ConversationContext) -> None:
+    def _apply_pending_category(self, context: ConversationContext) -> bool:
         if self.settings.is_glpi_real_mode:
             category_id = context.pending_glpi_category_id or context.pending_category_suggestion_id
             category = self.category_catalog.get_by_id(category_id or 0)
             if category is not None:
                 self._set_glpi_category(context, category)
-                return
+                return True
+            return False
         self._set_category(context, context.pending_category_suggestion_id or 12)
+        return True
 
     def _set_glpi_category(
         self,

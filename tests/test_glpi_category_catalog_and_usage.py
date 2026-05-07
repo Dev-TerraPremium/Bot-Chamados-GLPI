@@ -98,6 +98,66 @@ def test_real_category_catalog_filters_entity_and_helpdesk_visibility() -> None:
     assert catalog.search("wifi", ticket_type=1)[0].id == 544
 
 
+def test_real_category_catalog_accepts_entity_display_name_from_glpi() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "session"})
+        if request.url.path.endswith("/changeActiveProfile") or request.url.path.endswith("/changeActiveEntities"):
+            return httpx.Response(200, json={})
+        if request.url.path.endswith("/listSearchOptions/ITILCategory"):
+            return httpx.Response(
+                200,
+                json={
+                    "2": {"name": "ID", "field": "id"},
+                    "1": {"name": "Nome completo", "field": "completename"},
+                    "14": {"name": "Nome", "field": "name"},
+                    "80": {
+                        "name": "Entidade",
+                        "field": "completename",
+                        "table": "glpi_entities",
+                    },
+                    "3": {"name": "Visivel", "field": "is_helpdeskvisible"},
+                    "74": {"name": "Incident", "field": "is_incident"},
+                    "75": {"name": "Request", "field": "is_request"},
+                },
+            )
+        if request.url.path.endswith("/search/ITILCategory"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "2": 455,
+                            "1": "INFRAESTRUTURA > COMPUTADORES",
+                            "14": "COMPUTADORES",
+                            "80": "Entidade raiz > CORP. ADM > TI",
+                            "3": 1,
+                            "74": 1,
+                            "75": 1,
+                        }
+                    ]
+                },
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = GLPIRealClient(
+        GLPIIntegrationConfig(
+            base_url="https://glpi.local/apirest.php",
+            app_token="app",
+            user_token="user",
+            default_entity_id=3,
+            default_profile_id=4,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    catalog = RealGLPICategoryCatalogService(client, entity_id=3)
+
+    categories = catalog.get_categories(ticket_type=2)
+
+    assert [category.id for category in categories] == [455]
+    assert categories[0].entity_id == 3
+
+
 def test_redis_category_usage_tracker_uses_global_scores_then_seed_defaults() -> None:
     redis_client = fakeredis.FakeRedis()
     tracker = RedisCategoryUsageTracker(redis_client)

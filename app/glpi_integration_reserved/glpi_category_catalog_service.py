@@ -89,7 +89,7 @@ class StaticGLPICategoryCatalogService(GLPICategoryCatalogServiceInterface):
 
 
 class RealGLPICategoryCatalogService(GLPICategoryCatalogServiceInterface):
-    CACHE_KEY = "bot:glpi:category_catalog:v1"
+    CACHE_KEY = "bot:glpi:category_catalog:v2"
 
     def __init__(
         self,
@@ -235,11 +235,15 @@ class RealGLPICategoryCatalogService(GLPICategoryCatalogServiceInterface):
             return None
         name = _row_str(row, fields["name"])
         complete_name = _row_str(row, fields.get("complete_name")) or name
+        entity_id = _row_int(row, fields["entity_id"])
+        if not entity_id and _row_str(row, fields["entity_id"]):
+            entity_id = self.entity_id
+
         return GLPICategoryOption(
             id=category_id,
             name=name,
             complete_name=complete_name,
-            entity_id=_row_int(row, fields["entity_id"]),
+            entity_id=entity_id,
             parent_id=_row_int(row, fields.get("parent_id")),
             level=_row_int(row, fields.get("level")),
             is_helpdesk_visible=_row_bool(
