@@ -72,3 +72,17 @@ def test_location_requires_text_not_menu_number() -> None:
 
     assert result.state == "location_collection"
     assert "setor ou localidade" in result.bot_message
+
+
+def test_greeting_returns_main_menu_instead_of_invalid_choice() -> None:
+    controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=False),
+        description_organizer=FakeDescriptionOrganizer()
+    )
+    session_id = str(uuid4())
+
+    result = controller.process_message(session_id, "Olá")
+
+    assert result.state == "main_menu"
+    assert "Abrir chamado" in result.bot_message
+    assert "nÃºmero" not in result.bot_message

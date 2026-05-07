@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 
 class ConversationInputParser:
@@ -20,5 +21,26 @@ class ConversationInputParser:
         return text.strip().casefold() in self.RESET_COMMANDS
 
     def is_start_message(self, text: str) -> bool:
-        return text.strip() in {"", "__start__"}
+        normalized = self._normalize_control_text(text)
+        return normalized in {
+            "",
+            "__start__",
+            "oi",
+            "ola",
+            "olá",
+            "bom dia",
+            "boa tarde",
+            "boa noite",
+            "menu",
+            "inicio",
+            "iniciar",
+        }
 
+    @staticmethod
+    def _normalize_control_text(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text.casefold().strip())
+        normalized = "".join(
+            char for char in normalized if not unicodedata.combining(char)
+        )
+        normalized = re.sub(r"[^\w\s_]", " ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
