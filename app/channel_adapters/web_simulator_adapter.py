@@ -12,20 +12,29 @@ class WebSimulatorAdapter:
         self.flow_controller = flow_controller
 
     def receive_message(
-        self, session_id: str, message: str, channel_identifier: str = "", media: list[dict] | None = None
+        self,
+        session_id: str,
+        message: str,
+        channel_identifier: str = "",
+        media: list[dict] | None = None,
+        channel: str = DEFAULT_CHANNEL,
     ) -> ConversationTurnResult:
         return self.flow_controller.process_message(
             session_id=session_id,
             message=message,
-            channel=DEFAULT_CHANNEL,
+            channel=channel or DEFAULT_CHANNEL,
             channel_identifier=channel_identifier,
             media=media,
         )
 
-    def reset_session(self, session_id: str, channel_identifier: str = "") -> ConversationTurnResult:
+    def reset_session(
+        self,
+        session_id: str,
+        channel_identifier: str = "",
+        channel: str = DEFAULT_CHANNEL,
+    ) -> ConversationTurnResult:
         return self.flow_controller.reset_conversation(
             session_id=session_id,
-            channel=DEFAULT_CHANNEL,
+            channel=channel or DEFAULT_CHANNEL,
             channel_identifier=channel_identifier,
         )
-
