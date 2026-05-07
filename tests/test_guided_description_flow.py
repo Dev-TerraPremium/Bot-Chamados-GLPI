@@ -235,4 +235,4 @@ def test_guided_flow_uses_collected_answer_instead_of_generic_original_summary()
     assert result.state == "category_assignment_confirmation"
     assert "A nota fiscal não aparece para lançamento" in result.bot_message
     assert "problema grave de nota. A nota" not in result.bot_message
-    assert "relatou que o problema é grave" in result.bot_message
+    assert "relatou que o problema é grave" not in result.bot_message

@@ -1,3 +1,5 @@
+import unicodedata
+
 from app.glpi_integration_reserved.glpi_category_mapping_service import (
     GLPICategoryMappingService,
 )
@@ -73,23 +75,25 @@ class GLPITicketPayloadBuilder:
 
     @staticmethod
     def _build_glpi_content(draft: TicketDraft) -> str:
-        evidence = draft.evidence or "Não informado"
-        attachment_note = "Nenhum anexo recebido."
+        sections = [draft.description.strip()]
+
+        if draft.location:
+            sections.append(f"Localidade/Setor: {draft.location}")
+
+        evidence = (draft.evidence or "").strip()
+        if evidence and _normalize_control_text(evidence) != "nao informado":
+            sections.append(f"Informacao adicional: {evidence}")
+
         if draft.attachments:
-            attachment_note = "Anexos recebidos: " + ", ".join(
-                str(item.get("file_name") or "anexo") for item in draft.attachments
+            sections.append(
+                "Anexos recebidos: "
+                + ", ".join(
+                    str(item.get("file_name") or "anexo")
+                    for item in draft.attachments
+                )
             )
-        return (
-            f"Descrição organizada:\n{draft.description}\n\n"
-            f"Impacto informado:\n{draft.impact_label}\n\n"
-            f"Gravidade calculada:\n{draft.severity}\n\n"
-            f"Localidade/Setor:\n{draft.location}\n\n"
-            f"Evidência/Informação adicional:\n{evidence}\n\n"
-            f"{attachment_note}\n\n"
-            f"Canal de origem:\n{draft.channel}\n"
-            f"Solicitante informado pelo assistente:\n"
-            f"{draft.requester_name} ({draft.requester_login})"
-        )
+
+        return "\n\n".join(section for section in sections if section)
 
     @staticmethod
     def _to_glpi_level(impact_id: int) -> int:
@@ -97,13 +101,18 @@ class GLPITicketPayloadBuilder:
 
     @staticmethod
     def _severity_to_priority(severity: str) -> int:
-        normalized = severity.casefold()
+        normalized = _normalize_control_text(severity)
         if normalized == "baixa":
             return 2
-        if normalized == "média" or normalized == "media":
+        if normalized == "media":
             return 3
         if normalized == "alta":
             return 4
-        if normalized == "crítica" or normalized == "critica":
+        if normalized == "critica":
             return 5
         return 3
+
+
+def _normalize_control_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(char for char in normalized if not unicodedata.combining(char)).strip()

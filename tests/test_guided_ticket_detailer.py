@@ -299,3 +299,53 @@ def test_guided_detailer_does_not_send_category_context_to_model() -> None:
     )
 
     assert "categoria" not in client.user_prompt.casefold()
+
+
+def test_guided_detailer_accepts_model_contextual_question_without_domain_rules() -> None:
+    detailer = GuidedTicketDetailer(
+        client=FakeGenerativeClient(
+            {
+                "status": "ask_next",
+                "next_question": (
+                    "Esse pedido e para corrigir algo que falhou, substituir algo "
+                    "existente ou atender uma nova necessidade?"
+                ),
+                "organized_text": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = detailer.detail_ticket_description(
+        original_description="Solicito a compra de um kit mouse e teclado.",
+        clarification_turns=[],
+        category_name=None,
+        max_questions=5,
+    )
+
+    assert result.asks_next
+    assert "substituir" in result.next_question.casefold() or "nova necessidade" in result.next_question.casefold()
+
+
+def test_guided_detailer_prompt_uses_generic_triage_dimensions() -> None:
+    client = FakeGenerativeClient(
+        {
+            "status": "ready",
+            "next_question": "",
+            "organized_text": "",
+            "confidence": 0.9,
+        }
+    )
+    detailer = GuidedTicketDetailer(client=client, backend_name="fake-generative")
+
+    detailer.detail_ticket_description(
+        original_description="Solicito a compra de um kit.",
+        clarification_turns=[],
+        category_name=None,
+        max_questions=5,
+    )
+
+    prompt = client.user_prompt.casefold()
+    assert "qualidade do chamado final" in prompt
+    assert "proximo passo" in prompt

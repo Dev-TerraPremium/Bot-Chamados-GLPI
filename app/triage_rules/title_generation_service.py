@@ -6,9 +6,7 @@ class TitleGenerationService:
         normalized_description = re.sub(r"\s+", " ", description).strip()
         normalized_description = normalized_description.rstrip(".!?")
         if not normalized_description:
-            return category_name
+            return "Chamado de TI"
 
         short_description = normalized_description[:70].strip()
-        title = f"{category_name} - {short_description}"
-        return title[:100]
-
+        return short_description[:100]

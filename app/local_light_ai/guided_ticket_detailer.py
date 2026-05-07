@@ -50,7 +50,6 @@ class GuidedTicketDetailer:
             user_prompt=self._build_user_prompt(
                 original_description=original_description,
                 clarification_turns=turns,
-                category_name=category_name,
                 max_questions=max_questions,
             ),
             options={
@@ -79,7 +78,7 @@ class GuidedTicketDetailer:
         if status not in {"ask_next", "ready"}:
             status = (
                 "ask_next"
-                if self._looks_too_vague(original_description, clarification_turns)
+                if self._needs_more_triage(original_description, clarification_turns)
                 else "ready"
             )
 
@@ -90,10 +89,13 @@ class GuidedTicketDetailer:
         if (
             status == "ready"
             and remaining_questions > 0
-            and self._looks_too_vague(original_description, clarification_turns)
+            and self._needs_more_triage(original_description, clarification_turns)
         ):
             status = "ask_next"
-            next_question = self._fallback_question(clarification_turns)
+            next_question = self._fallback_question(
+                original_description,
+                clarification_turns,
+            )
             confidence = min(confidence, 0.55)
 
         if status == "ask_next" and remaining_questions <= 0:
@@ -102,7 +104,10 @@ class GuidedTicketDetailer:
         if status == "ask_next":
             next_question = self._normalize_question(next_question)
             if not self._question_is_allowed(next_question, clarification_turns):
-                next_question = self._fallback_question(clarification_turns)
+                next_question = self._fallback_question(
+                    original_description,
+                    clarification_turns,
+                )
                 confidence = min(confidence, 0.5)
             if not next_question:
                 return self._ready_result(
@@ -118,15 +123,10 @@ class GuidedTicketDetailer:
                 backend=self.backend_name,
             )
 
-        return GuidedDetailingResult(
-            status="ready",
-            next_question="",
-            organized_text=self._build_compact_summary(
-                original_description,
-                clarification_turns,
-            ),
+        return self._ready_result(
+            original_description,
+            clarification_turns,
             confidence=confidence,
-            backend=self.backend_name,
         )
 
     def _ready_result(
@@ -170,10 +170,10 @@ class GuidedTicketDetailer:
             r"\bsenha atual\b",
             r"\binforme .*senha\b",
             r"\btoken\b",
-            r"c[oó]digo de verifica[cç][aã]o",
+            r"codigo de verificacao",
             r"\bcpf\b",
             r"\brg\b",
-            r"cart[aã]o",
+            r"cartao",
             r"\bexecute\b",
             r"\bpowershell\b",
             r"\bcmd\b",
@@ -181,7 +181,7 @@ class GuidedTicketDetailer:
             r"\bformat(ar)?\b",
             r"\bapagar\b",
             r"\bdeletar\b",
-            r"causa prov[aá]vel",
+            r"causa provavel",
             r"\bprovavelmente\b",
         )
         return not any(re.search(pattern, normalized) for pattern in unsafe_patterns)
@@ -199,27 +199,34 @@ class GuidedTicketDetailer:
 
     def _fallback_question(
         self,
+        original_description: str,
         clarification_turns: list[dict[str, str]],
     ) -> str:
-        candidates = (
-            "Qual item, sistema, processo ou serviço está afetado e o que acontece exatamente?",
-            "Qual erro aparece ou qual comportamento você percebe exatamente?",
-            "Desde quando isso acontece e é constante ou intermitente?",
-            "Isso afeta somente você ou também outras pessoas/setores?",
-            "Qual setor ou localidade está relacionado ao chamado?",
-        )
+        candidates = [
+            "Qual item, sistema, processo ou servico esta afetado e o que acontece exatamente?",
+            "Qual erro aparece ou qual comportamento voce percebe exatamente?",
+            "Esse pedido e para corrigir algo que falhou, substituir algo existente ou atender uma nova necessidade?",
+            "Desde quando isso acontece e e constante ou intermitente?",
+            "Isso afeta somente voce ou tambem outras pessoas/setores?",
+            "Qual setor ou localidade esta relacionado ao chamado?",
+        ]
         for candidate in candidates:
             if self._question_is_allowed(candidate, clarification_turns):
                 return candidate
         return ""
 
-    def _looks_too_vague(
+    def _needs_more_triage(
         self,
         original_description: str,
         clarification_turns: list[dict[str, str]],
     ) -> bool:
-        if clarification_turns:
+        if len(clarification_turns) >= 5:
             return False
+        if not clarification_turns and self._looks_too_vague(original_description):
+            return True
+        return False
+
+    def _looks_too_vague(self, original_description: str) -> bool:
         normalized = self._normalize_text(original_description)
         vague_fragments = (
             "problema de",
@@ -246,12 +253,9 @@ class GuidedTicketDetailer:
             "dificuldade na",
             "dificuldade com",
             "nao funciona",
-            "não funciona",
             "nao consigo",
-            "não consigo",
             "deu problema",
             "esta ruim",
-            "está ruim",
         )
         detail_markers = (
             "quando",
@@ -332,6 +336,7 @@ class GuidedTicketDetailer:
         normalized = "".join(
             char for char in normalized if not unicodedata.combining(char)
         )
+        normalized = re.sub(r"[^\w\s]", " ", normalized)
         return re.sub(r"\s+", " ", normalized).strip()
 
     @staticmethod
@@ -343,18 +348,22 @@ class GuidedTicketDetailer:
     @staticmethod
     def _build_system_prompt() -> str:
         return (
-            "Você é uma IA local para entrevista guiada de chamados de TI em português do Brasil.\n"
-            "Sua única tarefa é decidir se a descrição já está suficientemente detalhada ou se falta uma pergunta objetiva.\n"
-            "Você NÃO escreve a descrição final do chamado.\n"
-            "Responda somente JSON válido.\n\n"
+            "Voce e uma IA local para entrevista guiada de chamados de TI em portugues do Brasil.\n"
+            "Atue como analista de primeiro atendimento: investigue somente o necessario para abrir um chamado claro.\n"
+            "Sua tarefa e decidir se ja existe detalhe suficiente ou se falta exatamente uma pergunta objetiva.\n"
+            "Voce NAO escreve a descricao final do chamado.\n"
+            "Responda somente JSON valido.\n\n"
             "Regras:\n"
-            "1. Use status ask_next para fazer exatamente uma pergunta curta.\n"
-            "2. Use status ready quando já houver detalhe suficiente.\n"
-            "3. Não peça senha, token, código de verificação, CPF, RG ou dado sensível.\n"
-            "4. Não peça para o usuário executar comandos técnicos.\n"
-            "5. Não invente causa, diagnóstico, sistema, local, gravidade ou solução.\n"
-            "6. Pergunte apenas sobre item afetado, processo/serviço, erro, quando começou, impacto, local/setor ou tentativa já feita.\n"
-            "7. Se estiver pronto, deixe next_question vazio.\n\n"
+            "1. Use status ask_next para fazer exatamente uma pergunta curta e contextual.\n"
+            "2. Use status ready apenas quando houver informacao suficiente para o atendimento entender o que precisa ser feito.\n"
+            "3. Avalie lacunas universais, sem depender de categoria fixa: item ou servico afetado, intencao do pedido, motivo ou sintoma, escopo/impacto, local/setor, erro exibido, quando ocorre e tentativa/evidencia ja informada.\n"
+            "4. Pergunte somente a lacuna mais util naquele momento; nao faca checklist completo.\n"
+            "5. Adapte a pergunta pela resposta anterior; nao repita pergunta ja feita.\n"
+            "6. Se a solicitacao for pedido de algo novo, entenda a finalidade ou justificativa quando isso melhorar o chamado.\n"
+            "7. Se for problema/falha, entenda sintoma, frequencia, alcance e tentativa simples ja feita quando isso melhorar o chamado.\n"
+            "8. Nao peca senha, token, codigo, CPF, RG ou dado sensivel.\n"
+            "9. Nao peca comandos tecnicos e nao invente causa, diagnostico, sistema, local, gravidade ou solucao.\n"
+            "10. Se estiver pronto, deixe next_question vazio.\n\n"
             "JSON exato: status, next_question, confidence."
         )
 
@@ -362,7 +371,6 @@ class GuidedTicketDetailer:
     def _build_user_prompt(
         original_description: str,
         clarification_turns: list[dict[str, str]],
-        category_name: str | None,
         max_questions: int,
     ) -> str:
         history_lines = []
@@ -376,9 +384,10 @@ class GuidedTicketDetailer:
         return (
             f"Limite total de perguntas: {max_questions}\n"
             f"Perguntas restantes: {remaining}\n\n"
-            f"Descrição inicial do usuário:\n{original_description}\n\n"
-            f"Histórico curto:\n{history}\n\n"
-            "Decida o próximo passo. Se perguntar, faça somente uma pergunta útil.\n"
+            f"Descricao inicial do usuario:\n{original_description}\n\n"
+            f"Historico curto:\n{history}\n\n"
+            "Decida o proximo passo com base na qualidade do chamado final, nao apenas na frase inicial.\n"
+            "Se perguntar, faca somente uma pergunta util e contextual. Se ja houver informacao suficiente, use ready.\n"
             "Retorne JSON neste formato:\n"
             "{\n"
             '  "status": "ask_next" ou "ready",\n'
@@ -405,14 +414,14 @@ class MockGuidedTicketDetailer(GuidedTicketDetailer):
         max_questions: int,
     ) -> GuidedDetailingResult:
         turns = self._normalize_turns(clarification_turns, max_questions)
-        if len(turns) >= max_questions or not self._looks_too_vague(
+        if len(turns) >= max_questions or not self._needs_more_triage(
             original_description,
             turns,
         ):
             return self._ready_result(original_description, turns, confidence=0.95)
         return GuidedDetailingResult(
             status="ask_next",
-            next_question=self._fallback_question(turns),
+            next_question=self._fallback_question(original_description, turns),
             organized_text="",
             confidence=0.85,
             backend=self.backend_name,

@@ -1142,22 +1142,18 @@ class ConversationFlowController:
 
     def _build_detailing_source_text(self, context: ConversationContext) -> str:
         original_description = self._clip_text(context.original_description or "", 400)
-        answers = [
-            self._clip_text(turn.get("answer", ""), 240)
-            for turn in context.description_clarification_turns
-            if self._clip_text(turn.get("answer", ""), 240)
-        ]
-        if answers and self._original_description_is_generic_for_summary(
-            original_description
-        ):
-            parts = answers
-        else:
-            parts = [original_description]
-            parts.extend(answers)
-        source_text = ". ".join(part.strip(" .") for part in parts if part.strip())
-        if source_text and not source_text.endswith((".", "!", "?")):
-            source_text += "."
-        return source_text
+        if not context.description_clarification_turns:
+            return original_description
+
+        lines = [f"O usuario informou inicialmente: {original_description}"]
+        detail_answers = []
+        for index, turn in enumerate(context.description_clarification_turns, start=1):
+            answer = self._clip_text(turn.get("answer", ""), 240)
+            if answer:
+                detail_answers.append(f"{index}. {answer}")
+        if detail_answers:
+            lines.append("Depois, acrescentou estes detalhes: " + " ".join(detail_answers))
+        return "\n".join(lines).strip()
 
     def _reset_description_for_rewrite(self, context: ConversationContext) -> None:
         context.original_description = None

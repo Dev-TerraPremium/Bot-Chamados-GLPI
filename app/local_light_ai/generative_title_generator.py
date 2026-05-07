@@ -1,6 +1,12 @@
-import json
-from app.local_light_ai.generative_description_organizer import LocalGenerativeClient, MockLocalGenerativeClient, OllamaLocalGenerativeClient
+import re
+
 from app.application_config.settings import AppSettings
+from app.local_light_ai.generative_description_organizer import (
+    LocalGenerativeClient,
+    MockLocalGenerativeClient,
+    OllamaLocalGenerativeClient,
+)
+
 
 class GenerativeTitleGenerator:
     def __init__(self, client: LocalGenerativeClient, num_predict: int = 150):
@@ -9,15 +15,21 @@ class GenerativeTitleGenerator:
 
     def generate_title(self, category_name: str, description: str) -> str:
         if not description.strip():
-            return category_name
-            
+            return "Chamado de TI"
+
         system_prompt = (
-            "Você é um gerador de títulos curtos para chamados de TI.\n"
-            "Crie um título que resuma o problema em no máximo 10 palavras.\n"
+            "Voce e um gerador de titulos curtos para chamados de TI.\n"
+            "Crie um titulo natural, direto e com no maximo 10 palavras.\n"
+            "Nao inclua categoria, caminho de categoria, setor interno, solicitante "
+            "ou metadados.\n"
+            "Exemplo bom: Mouse com falha no clique.\n"
             "Retorne estritamente em JSON com a chave 'title'."
         )
-        user_prompt = f"Categoria: {category_name}\nDescrição: {description}\n\nRetorne JSON no formato: {{\"title\": \"Seu titulo aqui\"}}"
-        
+        user_prompt = (
+            f"Descricao: {description}\n\n"
+            'Retorne JSON no formato: {"title": "Seu titulo aqui"}'
+        )
+
         try:
             payload = self.client.generate_json(
                 system_prompt=system_prompt,
@@ -25,15 +37,28 @@ class GenerativeTitleGenerator:
                 options={
                     "temperature": 0.2,
                     "num_predict": self.num_predict,
-                }
+                },
             )
             title = str(payload.get("title", "")).strip()
             if title:
-                return f"{category_name} - {title}"[:100]
+                return self._clean_title(title, category_name)
         except Exception:
             pass
 
-        return f"{category_name} - {description[:70].strip()}"[:100]
+        return self._clean_title(description[:70].strip(), category_name)
+
+    @staticmethod
+    def _clean_title(title: str, category_name: str) -> str:
+        title = re.sub(r"\s+", " ", title).strip(" .:-")
+        category = re.sub(r"\s+", " ", category_name or "").strip()
+        if category and title.casefold().startswith(category.casefold()):
+            title = title[len(category) :].strip(" .:-")
+        if " - " in title and ">" in title.split(" - ", maxsplit=1)[0]:
+            title = title.split(" - ", maxsplit=1)[1].strip()
+        if ">" in title:
+            title = title.split(">")[-1].strip(" .:-")
+        return (title or "Chamado de TI")[:100]
+
 
 def build_generative_title_generator(settings: AppSettings) -> GenerativeTitleGenerator:
     if settings.local_light_ai_mode.casefold() == "mock":

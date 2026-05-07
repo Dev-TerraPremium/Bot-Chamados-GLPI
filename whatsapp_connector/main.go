@@ -35,6 +35,7 @@ type AttachmentPayload struct {
 
 type BotRequest struct {
 	SessionID         string              `json:"session_id"`
+	Channel           string              `json:"channel"`
 	Message           string              `json:"message"`
 	ChannelIdentifier string              `json:"channel_identifier"`
 	Media             []AttachmentPayload `json:"media,omitempty"`
@@ -232,6 +233,7 @@ func eventHandler(evt interface{}) {
 		go func() {
 			reqBody := BotRequest{
 				SessionID:         senderPhone,
+				Channel:           "whatsapp",
 				Message:           text,
 				ChannelIdentifier: senderPhone,
 				Media:             mediaPayload,
