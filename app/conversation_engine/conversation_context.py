@@ -16,8 +16,13 @@ class ConversationContext:
     attachments: list[dict[str, Any]] = field(default_factory=list)
     selected_category_id: int | None = None
     selected_category_name: str | None = None
+    selected_glpi_category_id: int | None = None
+    selected_category_complete_name: str | None = None
     pending_category_suggestion_id: int | None = None
     pending_category_suggestion_name: str | None = None
+    pending_glpi_category_id: int | None = None
+    pending_category_complete_name: str | None = None
+    category_selection_options: list[dict[str, Any]] = field(default_factory=list)
     original_description: str | None = None
     organized_description: str | None = None
     description_clarification_question: str | None = None
@@ -39,8 +44,13 @@ class ConversationContext:
         self.attachments = []
         self.selected_category_id = None
         self.selected_category_name = None
+        self.selected_glpi_category_id = None
+        self.selected_category_complete_name = None
         self.pending_category_suggestion_id = None
         self.pending_category_suggestion_name = None
+        self.pending_glpi_category_id = None
+        self.pending_category_complete_name = None
+        self.category_selection_options = []
         self.original_description = None
         self.organized_description = None
         self.reset_description_clarification()
@@ -75,6 +85,8 @@ class ConversationContext:
             "opening_mode": self.opening_mode,
             "selected_category_id": self.selected_category_id,
             "selected_category_name": self.selected_category_name,
+            "selected_glpi_category_id": self.selected_glpi_category_id,
+            "selected_category_complete_name": self.selected_category_complete_name,
             "description_clarification_count": len(
                 self.description_clarification_turns
             ),

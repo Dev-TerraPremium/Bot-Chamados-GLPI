@@ -21,6 +21,19 @@ class ChannelIdentifierNormalizer:
         return digits_only
 
     @staticmethod
+    def phone_variants(phone: str) -> list[str]:
+        normalized = ChannelIdentifierNormalizer.normalize_phone(phone)
+        if not normalized:
+            return []
+
+        variants = [normalized]
+        if len(normalized) == 11 and normalized[2] == "9":
+            variants.append(normalized[:2] + normalized[3:])
+        if len(normalized) == 10:
+            variants.append(normalized[:2] + "9" + normalized[2:])
+        return list(dict.fromkeys(variants))
+
+    @staticmethod
     def normalize_cpf(cpf: str) -> str:
         """
         Normalizes a CPF by removing dots, hyphens, and spaces.

@@ -1,7 +1,16 @@
 from app.authentication_and_identity.authenticated_user_model import AuthenticatedUser
 
 
-def build_main_menu(user: AuthenticatedUser) -> str:
+def build_main_menu(user: AuthenticatedUser, opening_only: bool = False) -> str:
+    if opening_only:
+        return (
+            f"Ola, **{user.first_name}**.\n"
+            f"Voce esta autenticado como **{user.login}**.\n\n"
+            "Terra Premium | Assistente de Chamados TI\n"
+            "Como posso te ajudar hoje?\n\n"
+            "1. **Abrir chamado**\n"
+            "2. **Sair**"
+        )
     return (
         f"👋 Olá, **{user.first_name}**.\n"
         f"Você está autenticado como **{user.login}**.\n\n"
@@ -29,7 +38,6 @@ def build_ticket_type_prompt() -> str:
         "1. 💥 **Estou com um problema** (Incidente / Algo parou)\n"
         "2. ➕ **Quero solicitar algo** (Requisição / Novo acesso / Novo equipamento)"
     )
-
 
 def build_description_clarification_message(
     question: str,

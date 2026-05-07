@@ -16,6 +16,8 @@ class TicketFactory:
             opening_mode=context.opening_mode or "",
             category_id=context.selected_category_id or 0,
             category_name=context.selected_category_name or "",
+            glpi_category_id=context.selected_glpi_category_id or 0,
+            glpi_category_complete_name=context.selected_category_complete_name or "",
             description=context.organized_description or context.original_description or "",
             impact_id=context.impact_id or 0,
             impact_label=context.impact_label or "",

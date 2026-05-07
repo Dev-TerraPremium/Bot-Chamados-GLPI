@@ -2,8 +2,13 @@ from app.application_config.settings import AppSettings
 from app.authentication_and_identity.channel_linking_service import ChannelLinkingService
 from app.authentication_and_identity.redis_channel_identity_link_store import RedisChannelIdentityLinkStore
 from app.authentication_and_identity.channel_link_audit_service import ChannelLinkAuditService
-from app.authentication_and_identity.glpi_user_identity_lookup_service import MockGLPIUserIdentityLookupService
+from app.authentication_and_identity.glpi_user_identity_lookup_service import (
+    GLPIRealUserIdentityLookupService,
+    MockGLPIUserIdentityLookupService,
+)
 from app.distributed_runtime.redis_connection import get_redis_client
+from app.glpi_integration_reserved.glpi_future_real_client import GLPIRealClient
+from app.glpi_integration_reserved.glpi_integration_config import GLPIIntegrationConfig
 
 class InMemoryChannelIdentityLinkStore(RedisChannelIdentityLinkStore):
     """
@@ -50,7 +55,25 @@ def build_channel_linking_service(settings: AppSettings) -> ChannelLinkingServic
         store = InMemoryChannelIdentityLinkStore()
         audit_service = MockChannelLinkAuditService()
         
-    lookup_service = MockGLPIUserIdentityLookupService()
+    if settings.is_glpi_real_mode:
+        lookup_service = GLPIRealUserIdentityLookupService(
+            GLPIRealClient(
+                GLPIIntegrationConfig(
+                    base_url=settings.glpi_base_url,
+                    app_token=settings.glpi_app_token,
+                    user_token=settings.glpi_user_token,
+                    integration_mode=settings.glpi_integration_mode,
+                    default_entity_id=settings.glpi_default_entity_id,
+                    default_profile_id=settings.glpi_default_profile_id,
+                    default_requester_user_id=settings.glpi_default_requester_user_id,
+                    allow_insecure_http=settings.glpi_allow_insecure_http,
+                    http_timeout_seconds=settings.glpi_http_timeout_seconds,
+                    ticket_requester_search_field=settings.glpi_ticket_requester_search_field,
+                )
+            )
+        )
+    else:
+        lookup_service = MockGLPIUserIdentityLookupService()
     
     return ChannelLinkingService(
         store=store,

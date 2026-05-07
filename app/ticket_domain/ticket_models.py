@@ -19,6 +19,8 @@ class TicketDraft:
     evidence: str
     title: str
     ticket_type: int = 1
+    glpi_category_id: int = 0
+    glpi_category_complete_name: str = ""
     attachments: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:

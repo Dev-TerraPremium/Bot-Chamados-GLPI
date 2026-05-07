@@ -12,6 +12,8 @@ from app.conversation_engine.conversation_flow_controller import (
 from app.local_light_ai.description_organization_models import (
     DescriptionOrganizationResult,
 )
+from app.glpi_integration_reserved.glpi_category_catalog_service import GLPICategoryOption
+from app.ticket_domain.ticket_models import TicketCreated
 
 
 class FakeDescriptionOrganizer:
@@ -30,6 +32,68 @@ class FakeDescriptionOrganizer:
             clarification_question="",
             confidence=0.9,
             backend="fake-generative",
+        )
+
+
+class FakeRealCatalog:
+    category = GLPICategoryOption(
+        id=544,
+        name="WI-FI",
+        complete_name="INFRAESTRUTURA > REDES > WI-FI",
+        entity_id=3,
+        parent_id=528,
+        level=3,
+    )
+
+    def get_categories(self, ticket_type=None):
+        return [self.category]
+
+    def get_by_id(self, category_id: int):
+        return self.category if category_id == 544 else None
+
+    def search(self, query: str, *, ticket_type=None, limit: int = 5):
+        return [self.category]
+
+
+class FakeRealCategorySuggester:
+    def find_best_match(self, text: str, *, ticket_type=None):
+        from app.triage_rules.category_matching_service import CategoryMatch
+
+        return CategoryMatch(544, "INFRAESTRUTURA > REDES > WI-FI", 0.9, "fake")
+
+
+class FakeUsageTracker:
+    def __init__(self):
+        self.incremented = []
+
+    def increment(self, category_id: int) -> None:
+        self.incremented.append(category_id)
+
+    def top_categories(self, catalog, *, ticket_type=None, limit: int = 5):
+        return catalog.get_categories(ticket_type)[:limit]
+
+
+class FakeRealGLPIClient:
+    def __init__(self):
+        self.payload = None
+
+    def create_ticket(self, ticket_data: dict) -> TicketCreated:
+        self.payload = ticket_data
+        return TicketCreated(
+            ticket_number=1234,
+            title=ticket_data["title"],
+            status="Aberto",
+            severity=ticket_data["severity"],
+            description=ticket_data["description"],
+            category_name=ticket_data["category_name"],
+            requester_login=ticket_data["requester_login"],
+            glpi_user_id=ticket_data["glpi_user_id"],
+            channel=ticket_data["channel"],
+            location=ticket_data["location"],
+            impact_label=ticket_data["impact_label"],
+            evidence=ticket_data["evidence"],
+            opening_mode=ticket_data["opening_mode"],
+            created_at="2026-05-07T00:00:00Z",
         )
 
 
@@ -101,7 +165,7 @@ def test_open_ticket_flow_allows_manual_category_assignment() -> None:
 
     created_response = send(controller, session_id, "1")
     assert created_response["created_ticket"]["severity"] == "Alta"
-    assert created_response["created_ticket"]["glpi_user_id"] == 1001
+    assert created_response["created_ticket"]["glpi_user_id"] == 266
 
 
 def test_open_ticket_flow_uses_celery_glpi_client_in_mock_mode(monkeypatch) -> None:
@@ -169,3 +233,46 @@ def test_open_ticket_flow_uses_celery_glpi_client_in_mock_mode(monkeypatch) -> N
 
     assert created_response["created_ticket"]["ticket_number"] == 10001
     assert "Chamado simulado criado com sucesso" in created_response["bot_message"]
+
+
+def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() -> None:
+    session_id = str(uuid4())
+    glpi_client = FakeRealGLPIClient()
+    usage_tracker = FakeUsageTracker()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Wi-Fi caindo no depósito."),
+        glpi_client=glpi_client,
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = usage_tracker
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    category_response = send(controller, session_id, "wifi caindo no deposito")
+    assert "INFRAESTRUTURA > REDES > WI-FI" in category_response["bot_message"]
+
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    send(controller, session_id, "TI")
+    send(controller, session_id, "2")
+    created_response = send(controller, session_id, "1")
+
+    assert created_response["created_ticket"]["ticket_number"] == 1234
+    assert glpi_client.payload["glpi_input"]["itilcategories_id"] == 544
+    assert glpi_client.payload["glpi_input"]["_users_id_requester"] == 266
+    assert usage_tracker.incremented == [544]

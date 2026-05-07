@@ -16,8 +16,13 @@ class ConversationContextCodec:
             "opening_mode": context.opening_mode,
             "selected_category_id": context.selected_category_id,
             "selected_category_name": context.selected_category_name,
+            "selected_glpi_category_id": context.selected_glpi_category_id,
+            "selected_category_complete_name": context.selected_category_complete_name,
             "pending_category_suggestion_id": context.pending_category_suggestion_id,
             "pending_category_suggestion_name": context.pending_category_suggestion_name,
+            "pending_glpi_category_id": context.pending_glpi_category_id,
+            "pending_category_complete_name": context.pending_category_complete_name,
+            "category_selection_options": context.category_selection_options,
             "original_description": context.original_description,
             "organized_description": context.organized_description,
             "description_clarification_question": (
@@ -52,8 +57,17 @@ class ConversationContextCodec:
             opening_mode=data.get("opening_mode"),
             selected_category_id=data.get("selected_category_id"),
             selected_category_name=data.get("selected_category_name"),
+            selected_glpi_category_id=data.get("selected_glpi_category_id"),
+            selected_category_complete_name=data.get("selected_category_complete_name"),
             pending_category_suggestion_id=data.get("pending_category_suggestion_id"),
             pending_category_suggestion_name=data.get("pending_category_suggestion_name"),
+            pending_glpi_category_id=data.get("pending_glpi_category_id"),
+            pending_category_complete_name=data.get("pending_category_complete_name"),
+            category_selection_options=[
+                item
+                for item in data.get("category_selection_options", [])
+                if isinstance(item, dict)
+            ],
             original_description=data.get("original_description"),
             organized_description=data.get("organized_description"),
             description_clarification_question=data.get(

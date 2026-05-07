@@ -29,6 +29,7 @@ def _build_glpi_client():
             default_entity_id=settings.glpi_default_entity_id,
             default_profile_id=settings.glpi_default_profile_id,
             default_requester_user_id=settings.glpi_default_requester_user_id,
+            allow_insecure_http=settings.glpi_allow_insecure_http,
             http_timeout_seconds=settings.glpi_http_timeout_seconds,
             ticket_requester_search_field=settings.glpi_ticket_requester_search_field,
         )

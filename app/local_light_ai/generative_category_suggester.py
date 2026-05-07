@@ -1,6 +1,9 @@
 import json
 from app.triage_rules.category_catalog import CATEGORY_OPTIONS
-from app.triage_rules.category_matching_service import CategoryMatch
+from app.triage_rules.category_matching_service import (
+    CategoryMatch,
+    CategoryMatchingService,
+)
 from app.local_light_ai.generative_description_organizer import LocalGenerativeClient, MockLocalGenerativeClient, OllamaLocalGenerativeClient
 from app.application_config.settings import AppSettings
 
@@ -10,6 +13,10 @@ class GenerativeCategorySuggester:
         self.num_predict = num_predict
 
     def find_best_match(self, text: str) -> CategoryMatch:
+        heuristic_match = CategoryMatchingService().find_best_match(text)
+        if heuristic_match.confidence > 0:
+            return heuristic_match
+
         categories_text = "\n".join(f"- {c.id}: {c.name} (ex: {', '.join(c.examples)})" for c in CATEGORY_OPTIONS)
         system_prompt = (
             "Você é um classificador de categorias de TI.\n"
@@ -32,11 +39,11 @@ class GenerativeCategorySuggester:
             )
             cat_id = int(payload.get("category_id", 12))
         except Exception:
-            cat_id = 12
+            return CategoryMatchingService().find_best_match(text)
 
         category_name = next((c.name for c in CATEGORY_OPTIONS if c.id == cat_id), "Outro")
         if category_name == "Outro":
-            cat_id = 12
+            return CategoryMatchingService().find_best_match(text)
         
         return CategoryMatch(
             category_id=cat_id,

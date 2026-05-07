@@ -1,4 +1,6 @@
 import logging
+import base64
+import json as jsonlib
 from typing import Any
 
 import httpx
@@ -20,10 +22,15 @@ class GLPIClientError(RuntimeError):
 class GLPIRealClient(GLPIClientInterface):
     """GLPI REST API client used by production mode."""
 
-    def __init__(self, config: GLPIIntegrationConfig) -> None:
+    def __init__(
+        self,
+        config: GLPIIntegrationConfig,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self.config = config
         self.base_url = config.normalized_base_url
         self._session_token: str | None = None
+        self._transport = transport
 
     def init_session(self) -> str:
         if self._session_token:
@@ -56,6 +63,12 @@ class GLPIRealClient(GLPIClientInterface):
         ticket_id = int(response.get("id") or response.get("item", {}).get("id") or 0)
         if not ticket_id:
             raise GLPIClientError("GLPI nao retornou ID do chamado criado.")
+        attachment_errors = self._attach_documents(
+            ticket_id,
+            ticket_data.get("attachments") or [],
+        )
+        if attachment_errors:
+            self._create_attachment_failure_followup(ticket_id, attachment_errors)
         return self._created_ticket_from_payload(ticket_id, ticket_data)
 
     def get_my_tickets(self, user_id: int) -> list[TicketCreated]:
@@ -133,6 +146,37 @@ class GLPIRealClient(GLPIClientInterface):
             return None
         return {"raw": rows[0], "category_name": category_name}
 
+    def list_search_options(self, itemtype: str) -> dict:
+        return self._request("GET", f"/listSearchOptions/{itemtype}")
+
+    def search(self, itemtype: str, params: dict[str, Any]) -> dict:
+        return self._request("GET", f"/search/{itemtype}", params=params)
+
+    def healthcheck(self) -> dict:
+        checks: dict[str, Any] = {
+            "status": "ok",
+            "base_url": self.base_url,
+            "mode": self.config.integration_mode,
+        }
+        self.init_session()
+        checks["session"] = "ok"
+        checks["profile"] = (
+            self.config.default_profile_id if self.config.default_profile_id else "default"
+        )
+        checks["entity"] = (
+            self.config.default_entity_id if self.config.default_entity_id else "default"
+        )
+        self.list_search_options("User")
+        checks["user_search_options"] = "ok"
+        self.list_search_options("ITILCategory")
+        checks["category_search_options"] = "ok"
+        self.list_search_options("Ticket")
+        checks["ticket_search_options"] = "ok"
+        self.search("ITILCategory", {"range": "0-0"})
+        checks["category_search"] = "ok"
+        checks["ticket_create_permission"] = "not_mutated"
+        return checks
+
     def _request(
         self,
         method: str,
@@ -143,8 +187,7 @@ class GLPIRealClient(GLPIClientInterface):
         json: dict[str, Any] | None = None,
         use_session: bool = True,
     ) -> dict:
-        if not self.base_url.startswith("https://"):
-            raise GLPIClientError("GLPI_BASE_URL deve usar HTTPS em modo real.")
+        self._ensure_base_url_allowed()
 
         request_headers = {
             "App-Token": self.config.app_token,
@@ -156,10 +199,15 @@ class GLPIRealClient(GLPIClientInterface):
             request_headers.update(headers)
 
         try:
+            client_kwargs: dict[str, Any] = {
+                "base_url": self.base_url,
+                "timeout": self.config.http_timeout_seconds,
+                "follow_redirects": False,
+            }
+            if self._transport is not None:
+                client_kwargs["transport"] = self._transport
             with httpx.Client(
-                base_url=self.base_url,
-                timeout=self.config.http_timeout_seconds,
-                follow_redirects=False,
+                **client_kwargs,
             ) as client:
                 response = client.request(
                     method,
@@ -195,6 +243,69 @@ class GLPIRealClient(GLPIClientInterface):
             return {"items": payload}
         return payload
 
+    def _request_multipart(
+        self,
+        method: str,
+        path: str,
+        *,
+        files: dict[str, Any],
+    ) -> dict:
+        self._ensure_base_url_allowed()
+        request_headers = {
+            "App-Token": self.config.app_token,
+            "Session-Token": self.init_session(),
+        }
+        try:
+            client_kwargs: dict[str, Any] = {
+                "base_url": self.base_url,
+                "timeout": self.config.http_timeout_seconds,
+                "follow_redirects": False,
+            }
+            if self._transport is not None:
+                client_kwargs["transport"] = self._transport
+            with httpx.Client(**client_kwargs) as client:
+                response = client.request(
+                    method,
+                    path,
+                    headers=request_headers,
+                    files=files,
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            safe_body = self._redact(str(exc.response.text))
+            logger.warning(
+                "glpi_multipart_http_status_error",
+                extra={
+                    "method": method,
+                    "path": path,
+                    "status_code": exc.response.status_code,
+                    "body": safe_body,
+                },
+            )
+            raise GLPIClientError("GLPI recusou o envio de anexo.") from exc
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "glpi_multipart_http_error",
+                extra={"method": method, "path": path, "error": str(exc)},
+            )
+            raise GLPIClientError("Nao foi possivel enviar anexo ao GLPI.") from exc
+
+        if not response.content:
+            return {}
+        payload = response.json()
+        if isinstance(payload, list):
+            return {"items": payload}
+        return payload
+
+    def _ensure_base_url_allowed(self) -> None:
+        if self.base_url.startswith("https://"):
+            return
+        if self.base_url.startswith("http://") and self.config.allow_insecure_http:
+            return
+        raise GLPIClientError(
+            "GLPI_BASE_URL deve usar HTTPS em modo real, ou GLPI_ALLOW_INSECURE_HTTP=true para ambiente legado."
+        )
+
     def _activate_profile_and_entity(self) -> None:
         if self.config.default_profile_id:
             self._request(
@@ -210,6 +321,83 @@ class GLPIRealClient(GLPIClientInterface):
                     "entities_id": self.config.default_entity_id,
                     "is_recursive": True,
                 },
+            )
+
+    def _attach_documents(self, ticket_id: int, attachments: list[dict]) -> list[str]:
+        errors: list[str] = []
+        for index, attachment in enumerate(attachments, start=1):
+            file_name = str(attachment.get("file_name") or f"anexo-{index}")
+            try:
+                raw_bytes = base64.b64decode(str(attachment.get("data_base64") or ""))
+                mime_type = str(attachment.get("mime_type") or "application/octet-stream")
+                manifest = {
+                    "input": {
+                        "name": file_name,
+                        "_filename": [file_name],
+                    }
+                }
+                response = self._request_multipart(
+                    "POST",
+                    "/Document",
+                    files={
+                        "uploadManifest": (
+                            None,
+                            jsonlib.dumps(manifest),
+                            "application/json",
+                        ),
+                        "filename[0]": (file_name, raw_bytes, mime_type),
+                    },
+                )
+                document_id = int(
+                    response.get("id") or response.get("item", {}).get("id") or 0
+                )
+                if not document_id:
+                    raise GLPIClientError("GLPI nao retornou ID do documento.")
+                self._request(
+                    "POST",
+                    "/Document_Item",
+                    json={
+                        "input": {
+                            "documents_id": document_id,
+                            "itemtype": "Ticket",
+                            "items_id": ticket_id,
+                        }
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "glpi_attachment_upload_failed",
+                    extra={"ticket_id": ticket_id, "file_name": file_name},
+                )
+                errors.append(file_name)
+        return errors
+
+    def _create_attachment_failure_followup(
+        self,
+        ticket_id: int,
+        attachment_errors: list[str],
+    ) -> None:
+        try:
+            self._request(
+                "POST",
+                "/ITILFollowup",
+                json={
+                    "input": {
+                        "itemtype": "Ticket",
+                        "items_id": ticket_id,
+                        "content": (
+                            "Aviso automatico do bot: o chamado foi criado, mas nao foi "
+                            "possivel anexar os seguintes arquivos: "
+                            + ", ".join(attachment_errors)
+                        ),
+                        "is_private": 0,
+                    }
+                },
+            )
+        except GLPIClientError:
+            logger.exception(
+                "glpi_attachment_failure_followup_failed",
+                extra={"ticket_id": ticket_id},
             )
 
     def _search_ticket_ids_for_requester(self, user_id: int) -> list[int]:
@@ -342,8 +530,11 @@ class GLPIRealClient(GLPIClientInterface):
         return None
 
     def _redact(self, value: str) -> str:
-        redacted = value.replace(self.config.app_token, "[APP_TOKEN_REDACTED]")
-        redacted = redacted.replace(self.config.user_token, "[USER_TOKEN_REDACTED]")
+        redacted = value
+        if self.config.app_token:
+            redacted = redacted.replace(self.config.app_token, "[APP_TOKEN_REDACTED]")
+        if self.config.user_token:
+            redacted = redacted.replace(self.config.user_token, "[USER_TOKEN_REDACTED]")
         if self._session_token:
             redacted = redacted.replace(
                 self._session_token,

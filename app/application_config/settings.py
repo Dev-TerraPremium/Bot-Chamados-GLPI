@@ -18,11 +18,17 @@ def _get_bool(name: str, default: bool = False) -> bool:
 
 
 def _get_int(name: str, default: int) -> int:
-    return int(os.getenv(name, str(default)))
+    raw_value = os.getenv(name)
+    if raw_value is None or raw_value.strip() == "":
+        return default
+    return int(raw_value)
 
 
 def _get_float(name: str, default: float) -> float:
-    return float(os.getenv(name, str(default)))
+    raw_value = os.getenv(name)
+    if raw_value is None or raw_value.strip() == "":
+        return default
+    return float(raw_value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +67,7 @@ class AppSettings:
     glpi_default_entity_id: int = 0
     glpi_default_profile_id: int = 0
     glpi_default_requester_user_id: int = 0
+    glpi_allow_insecure_http: bool = False
     glpi_http_timeout_seconds: float = 20.0
     glpi_session_ttl_seconds: int = 600
     glpi_create_ticket_idempotency_ttl_seconds: int = 300
@@ -154,6 +161,7 @@ def load_settings() -> AppSettings:
         glpi_default_requester_user_id=_get_int(
             "GLPI_DEFAULT_REQUESTER_USER_ID", 0
         ),
+        glpi_allow_insecure_http=_get_bool("GLPI_ALLOW_INSECURE_HTTP", False),
         glpi_http_timeout_seconds=_get_float("GLPI_HTTP_TIMEOUT_SECONDS", 20.0),
         glpi_session_ttl_seconds=_get_int("GLPI_SESSION_TTL_SECONDS", 600),
         glpi_create_ticket_idempotency_ttl_seconds=_get_int(
