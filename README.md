@@ -1,6 +1,6 @@
 # Assistente de Chamados TI On-Premise
 
-Base de um bot corporativo on-premise para triagem, abertura, consulta e complemento de chamados de TI, com simulador web, GLPI em modo mock ou real, Redis/Celery para concorrência produtiva e IA local leve via Ollama.
+Base de um bot corporativo on-premise para triagem, abertura, consulta e complemento de chamados de TI, com simulador web, GLPI em modo mock ou real, Redis/Celery para concorrência produtiva e Gemini via API com Ollama opcional.
 
 ## Objetivo
 
@@ -42,7 +42,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-O `requirements.txt` instala as dependências Python da aplicação, incluindo FastAPI, Redis, Celery, HTTPX e testes. A IA generativa local roda em um runtime on-premise separado, via Ollama, usando por padrão o modelo `qwen2.5:1.5b`.
+O `requirements.txt` instala as dependências Python da aplicação, incluindo FastAPI, Redis, Celery, HTTPX e testes. Em produção, a organização de texto usa Gemini via API com fallback determinístico; o runtime Ollama continua disponível apenas como opção explícita.
 
 ## Rodar
 
@@ -87,7 +87,7 @@ No Windows, `--pool=solo` evita problemas de fork. Em Linux/container, o pool po
 
 ## Rodar com Docker
 
-Para validar a stack completa com Redis e workers Celery sem depender de GLPI real ou Ollama real:
+Para validar a stack completa com Redis e workers Celery sem depender de GLPI real:
 
 ```bash
 docker compose up --build -d
@@ -95,18 +95,23 @@ docker compose ps
 docker compose logs -f web worker-ai worker-glpi
 ```
 
-O arquivo [`.env.docker`](/Users/paletotcode/Documents/Bot-Chamados-GLPI/.env.docker) sobe a aplicação com Redis/Celery e IA local real via Ollama no host:
+O arquivo [`.env.docker`](/Users/paletotcode/Documents/Bot-Chamados-GLPI/.env.docker) controla se o deploy usa Gemini via API ou Ollama local:
 
 - `STATE_BACKEND=redis`
 - `USE_CELERY_WORKERS=true`
 - `GLPI_INTEGRATION_MODE=mock`
-- `LOCAL_LIGHT_AI_MODE=generative_ollama`
-- `OLLAMA_BASE_URL=http://host.docker.internal:11434`
-- `LOCAL_GENERATIVE_MODEL=qwen2.5:1.5b`
+- `LOCAL_LIGHT_AI_MODE=generative_google`
+- `LOCAL_OLLAMA_ENABLED=false`
+- `GOOGLE_AI_MODEL=gemini-3.1-flash-lite`
+- `GOOGLE_AI_TIMEOUT_SECONDS=12`
+- `GOOGLE_AI_MAX_RETRIES=1`
+- `GOOGLE_AI_RPM_LIMIT=12`
+- `GOOGLE_AI_RPD_LIMIT=450`
 - `AI_GUIDED_DETAILING_ENABLED=true`
-- `AI_MAX_CLARIFICATION_QUESTIONS=5`
+- `AI_MAX_CLARIFICATION_QUESTIONS=1`
+- `AI_GENERATIVE_TITLE_ENABLED=false`
 
-Isso força o caminho completo de filas sem depender de GLPI real. O worker GLPI roda em `glpi_io`, o worker de IA em `ai_local`, e o modelo generativo roda localmente no host via Ollama. Quando a descrição inicial estiver vaga, a IA pode fazer até 5 perguntas curtas, uma por vez, antes de sugerir a categoria.
+Quando `LOCAL_OLLAMA_ENABLED=false`, o deploy remoto não sobe `ollama` nem `ollama-pull`. Quando `LOCAL_OLLAMA_ENABLED=true` e `LOCAL_LIGHT_AI_MODE=generative_ollama`, o runtime local volta a ser usado. O worker GLPI roda em `glpi_io`, o worker de IA em `ai_local`, e o fluxo guiado faz no máximo 1 pergunta curta antes de organizar a descrição e sugerir categoria.
 
 Healthchecks úteis:
 
@@ -200,42 +205,50 @@ Telegram, WhatsApp e Microsoft Teams devem entrar apenas como adaptadores em `ap
 - O frontend usa `textContent`, evitando renderizar HTML vindo das mensagens.
 - Nenhuma credencial real deve ser commitada.
 
-## IA generativa local
+## IA generativa e fallback
 
-A organizacao da descricao usa `app/local_light_ai/generative_description_organizer.py`, chamando um modelo generativo local via Ollama.
+A organizacao da descricao usa `app/local_light_ai/generative_description_organizer.py`, com backend configuravel entre Google Gemini e Ollama local opcional. Em producao, o padrao recomendado e Gemini com timeout curto e fallback deterministico para manter o bot responsivo.
 
 Caracteristicas:
 
-- roda localmente, em CPU;
-- não chama API externa;
+- usa API externa Google Gemini por padrao;
+- pode rodar localmente, em CPU, via Ollama quando explicitamente habilitado;
 - não usa OpenAI API;
-- não usa regex ou regras determinísticas para reescrever descrição;
+- usa fallback deterministico quando o Gemini falha, demora ou retorna texto inseguro;
 - retorna JSON estruturado;
-- pode pedir esclarecimento quando o texto estiver confuso;
+- pode pedir 1 esclarecimento guiado quando o texto estiver vago;
 - não inventa causa, sistema, urgência ou solução;
+- exige descricao final em primeira pessoa e rejeita textos como "o usuario informou";
 - atua somente na organização de descrições e complementos;
-- possui limite de entrada, saída, timeout, temperatura e tokens.
+- possui limite de entrada, saída, timeout, temperatura, tokens e cota por Redis.
 
 Parametrizacao:
 
-- `LOCAL_LIGHT_AI_MODE=generative_ollama`
+- `LOCAL_LIGHT_AI_MODE=generative_google`
+- `LOCAL_OLLAMA_ENABLED=false`
 - `OLLAMA_BASE_URL=http://127.0.0.1:11434`
-- `LOCAL_GENERATIVE_MODEL=qwen2.5:1.5b`
-- `LOCAL_GENERATIVE_TIMEOUT_SECONDS=120`
+- `LOCAL_GENERATIVE_MODEL=qwen2.5:0.5b`
+- `LOCAL_GENERATIVE_TIMEOUT_SECONDS=30`
+- `GOOGLE_AI_MODEL=gemini-3.1-flash-lite`
+- `GOOGLE_AI_TIMEOUT_SECONDS=12`
+- `GOOGLE_AI_MAX_RETRIES=1`
+- `GOOGLE_AI_RPM_LIMIT=12`
+- `GOOGLE_AI_RPD_LIMIT=450`
 - `AI_GUIDED_DETAILING_ENABLED=true`
-- `AI_MAX_CLARIFICATION_QUESTIONS=5`
+- `AI_MAX_CLARIFICATION_QUESTIONS=1`
+- `AI_GENERATIVE_TITLE_ENABLED=false`
 - `AI_MAX_INPUT_CHARS=2000`
 - `AI_MAX_OUTPUT_CHARS=800`
 - `AI_OLLAMA_NUM_PREDICT=180`
 - `AI_OLLAMA_TEMPERATURE=0.1`
 
-Para preparar a IA local:
+Para preparar a IA local opcional:
 
 ```bash
-ollama pull qwen2.5:1.5b
+ollama pull qwen2.5:0.5b
 ```
 
-Se o Ollama ou o modelo não estiverem disponíveis, o fluxo não usa fallback legado: o bot informa que a IA generativa local está indisponível e pede nova tentativa após correção do runtime.
+Se o Gemini estiver indisponivel, lento ou retornar `429/503/timeout`, o bot registra metricas estruturadas e segue com fallback local em primeira pessoa. Se o Ollama estiver desabilitado, o deploy remoto remove os containers `ollama` e `ollama-pull`.
 
 ## Plano de implementacao para producao GLPI
 
@@ -323,7 +336,13 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/2
 
 AI_QUEUE_NAME=ai_local
 AI_MAX_CONCURRENT_TASKS=1
-AI_TASK_TIMEOUT_SECONDS=120
+AI_TASK_TIMEOUT_SECONDS=25
+GOOGLE_AI_TIMEOUT_SECONDS=12
+GOOGLE_AI_MAX_RETRIES=1
+GOOGLE_AI_RPM_LIMIT=12
+GOOGLE_AI_RPD_LIMIT=450
+AI_MAX_CLARIFICATION_QUESTIONS=1
+AI_GENERATIVE_TITLE_ENABLED=false
 AI_MAX_INPUT_CHARS=2000
 AI_MAX_OUTPUT_CHARS=800
 AI_OLLAMA_NUM_PREDICT=180

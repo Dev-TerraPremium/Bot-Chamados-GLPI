@@ -7,8 +7,7 @@ from app.glpi_integration_reserved.glpi_category_catalog_service import (
 )
 from app.local_light_ai.generative_description_organizer import (
     LocalGenerativeClient,
-    MockLocalGenerativeClient,
-    OllamaLocalGenerativeClient,
+    build_local_generative_client,
 )
 from app.triage_rules.category_matching_service import CategoryMatch
 
@@ -35,6 +34,10 @@ class GLPICategorySuggestionService:
             return CategoryMatch(0, "Categoria GLPI indisponivel", 0.0, "")
 
         category_by_id = {category.id: category for category in categories}
+        matches = self.catalog.search(text, ticket_type=ticket_type, limit=1)
+        if matches:
+            return self._match(matches[0], confidence=0.72, source="text_search")
+
         try:
             category_id = self._ask_model(text, categories)
             if category_id in category_by_id:
@@ -42,10 +45,6 @@ class GLPICategorySuggestionService:
                 return self._match(category, confidence=0.9, source="ai_inferred")
         except Exception:
             pass
-
-        matches = self.catalog.search(text, ticket_type=ticket_type, limit=1)
-        if matches:
-            return self._match(matches[0], confidence=0.65, source="text_search")
 
         fallback = self._fallback_category(categories)
         return self._match(fallback, confidence=0.0, source="fallback")
@@ -63,7 +62,11 @@ class GLPICategorySuggestionService:
                 "Retorne apenas JSON: {\"category_id\": numero}."
             ),
             user_prompt=f"Descricao do usuario: {text}\n\nRetorne JSON.",
-            options={"temperature": 0.1, "num_predict": self.num_predict},
+            options={
+                "temperature": 0.1,
+                "num_predict": self.num_predict,
+                "purpose": "categoria_chamado",
+            },
         )
         if isinstance(payload, str):
             payload = json.loads(payload)
@@ -97,14 +100,7 @@ def build_glpi_category_suggestion_service(
     settings: AppSettings,
     catalog: GLPICategoryCatalogServiceInterface,
 ) -> GLPICategorySuggestionService:
-    if settings.local_light_ai_mode.casefold() == "mock":
-        client = MockLocalGenerativeClient()
-    else:
-        client = OllamaLocalGenerativeClient(
-            base_url=settings.ollama_base_url,
-            model=settings.local_generative_model,
-            timeout_seconds=settings.local_generative_timeout_seconds,
-        )
+    client, _ = build_local_generative_client(settings)
     return GLPICategorySuggestionService(
         catalog=catalog,
         client=client,

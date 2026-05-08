@@ -53,8 +53,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      ollama-pull:
-        condition: service_completed_successfully
     command:
       [
         "uvicorn",
@@ -85,8 +83,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      ollama-pull:
-        condition: service_completed_successfully
     restart: unless-stopped
     command:
       [

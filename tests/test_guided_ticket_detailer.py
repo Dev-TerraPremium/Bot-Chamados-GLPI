@@ -52,7 +52,7 @@ def test_guided_detailer_replaces_unsafe_question_with_fallback() -> None:
     )
 
     result = detailer.detail_ticket_description(
-        original_description="Não consigo acessar o sistema",
+        original_description="Estou com problema no sistema",
         clarification_turns=[],
         category_name=None,
         max_questions=5,
@@ -60,7 +60,7 @@ def test_guided_detailer_replaces_unsafe_question_with_fallback() -> None:
 
     assert result.asks_next
     assert "senha" not in result.next_question.casefold()
-    assert "o que acontece" in result.next_question.casefold()
+    assert result.backend == "local-guided-question"
 
 
 def test_guided_detailer_finalizes_when_question_limit_is_reached() -> None:
@@ -301,19 +301,20 @@ def test_guided_detailer_does_not_send_category_context_to_model() -> None:
     assert "categoria" not in client.user_prompt.casefold()
 
 
-def test_guided_detailer_accepts_model_contextual_question_without_domain_rules() -> None:
+def test_guided_detailer_skips_model_for_clear_request() -> None:
+    client = FakeGenerativeClient(
+        {
+            "status": "ask_next",
+            "next_question": (
+                "Esse pedido e para corrigir algo que falhou, substituir algo "
+                "existente ou atender uma nova necessidade?"
+            ),
+            "organized_text": "",
+            "confidence": 0.9,
+        }
+    )
     detailer = GuidedTicketDetailer(
-        client=FakeGenerativeClient(
-            {
-                "status": "ask_next",
-                "next_question": (
-                    "Esse pedido e para corrigir algo que falhou, substituir algo "
-                    "existente ou atender uma nova necessidade?"
-                ),
-                "organized_text": "",
-                "confidence": 0.9,
-            }
-        ),
+        client=client,
         backend_name="fake-generative",
     )
 
@@ -324,11 +325,12 @@ def test_guided_detailer_accepts_model_contextual_question_without_domain_rules(
         max_questions=5,
     )
 
-    assert result.asks_next
-    assert "substituir" in result.next_question.casefold() or "nova necessidade" in result.next_question.casefold()
+    assert result.is_ready
+    assert not client.called
+    assert "kit mouse e teclado" in result.organized_text
 
 
-def test_guided_detailer_prompt_uses_generic_triage_dimensions() -> None:
+def test_guided_detailer_does_not_call_model_for_clear_initial_text() -> None:
     client = FakeGenerativeClient(
         {
             "status": "ready",
@@ -346,6 +348,4 @@ def test_guided_detailer_prompt_uses_generic_triage_dimensions() -> None:
         max_questions=5,
     )
 
-    prompt = client.user_prompt.casefold()
-    assert "qualidade do chamado final" in prompt
-    assert "proximo passo" in prompt
+    assert not client.called

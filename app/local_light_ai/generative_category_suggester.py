@@ -4,7 +4,10 @@ from app.triage_rules.category_matching_service import (
     CategoryMatch,
     CategoryMatchingService,
 )
-from app.local_light_ai.generative_description_organizer import LocalGenerativeClient, MockLocalGenerativeClient, OllamaLocalGenerativeClient
+from app.local_light_ai.generative_description_organizer import (
+    LocalGenerativeClient,
+    build_local_generative_client,
+)
 from app.application_config.settings import AppSettings
 
 class GenerativeCategorySuggester:
@@ -21,10 +24,10 @@ class GenerativeCategorySuggester:
         system_prompt = (
             "Você é um classificador de categorias de TI.\n"
             "Analise a descrição do problema e escolha o ID da categoria mais adequada.\n"
-            "Use a chave 'thought' para explicar o raciocínio passo a passo antes da chave 'category_id'.\n\n"
+            "Nao explique o raciocinio e nao invente categorias.\n\n"
             "Categorias disponíveis:\n"
             f"{categories_text}\n\n"
-            "Retorne APENAS um objeto JSON com 'thought' (string) e 'category_id' (inteiro)."
+            "Retorne APENAS um objeto JSON com 'category_id' (inteiro)."
         )
         user_prompt = f"Descrição do usuário: {text}\n\nRetorne JSON."
         
@@ -35,6 +38,7 @@ class GenerativeCategorySuggester:
                 options={
                     "temperature": 0.1,
                     "num_predict": self.num_predict,
+                    "purpose": "categoria_chamado",
                 }
             )
             cat_id = int(payload.get("category_id", 12))
@@ -53,12 +57,5 @@ class GenerativeCategorySuggester:
         )
 
 def build_generative_category_suggester(settings: AppSettings) -> GenerativeCategorySuggester:
-    if settings.local_light_ai_mode.casefold() == "mock":
-        client = MockLocalGenerativeClient()
-    else:
-        client = OllamaLocalGenerativeClient(
-            base_url=settings.ollama_base_url,
-            model=settings.local_generative_model,
-            timeout_seconds=settings.local_generative_timeout_seconds,
-        )
+    client, _ = build_local_generative_client(settings)
     return GenerativeCategorySuggester(client=client, num_predict=300)

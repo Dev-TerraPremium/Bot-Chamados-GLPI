@@ -56,6 +56,21 @@ if [ ! -f "$REMOTE_DIR/.env.docker" ]; then
 fi
 ok ".env.docker presente."
 
+OLLAMA_ENABLED="$(awk -F= '/^LOCAL_OLLAMA_ENABLED=/{print tolower($2)}' "$REMOTE_DIR/.env.docker" | tail -n 1)"
+if [ -z "$OLLAMA_ENABLED" ]; then
+    OLLAMA_ENABLED="true"
+fi
+
+COMPOSE_SERVICES=(redis web worker-ai worker-glpi whatsapp)
+if [[ "$OLLAMA_ENABLED" =~ ^(1|true|yes|sim|on)$ ]]; then
+    COMPOSE_SERVICES+=(ollama ollama-pull)
+    ok "Runtime Ollama habilitado para este deploy."
+else
+    warn "Runtime Ollama desabilitado; deploy usara somente a IA via API."
+    docker compose stop ollama ollama-pull >/dev/null 2>&1 || true
+    docker compose rm -f ollama ollama-pull >/dev/null 2>&1 || true
+fi
+
 log "Instalando painel terminal botctl..."
 if [ -f "$REMOTE_DIR/scripts/botctl.py" ]; then
     chmod +x "$REMOTE_DIR/scripts/botctl.py"
@@ -77,7 +92,7 @@ ok "ALLOWED_NUMBERS=66999990980 confirmado."
 # ------------------------------------------------------------------
 cd "$REMOTE_DIR"
 log "Build e subida dos containers (primeira vez pode demorar 5-15min)..."
-DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose up -d --build
+DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose up -d --build "${COMPOSE_SERVICES[@]}"
 ok "Containers iniciados."
 
 # ------------------------------------------------------------------

@@ -5,6 +5,7 @@ from app.conversation_engine.conversation_flow_controller import ConversationFlo
 from app.local_light_ai.description_organization_models import (
     DescriptionOrganizationResult,
     GuidedDetailingResult,
+    LocalGenerativeAIUnavailableError,
 )
 
 
@@ -44,6 +45,27 @@ class SequencedDetailer:
             }
         )
         return self.results.pop(0)
+
+
+class UnavailableDetailer:
+    def detail_ticket_description(
+        self,
+        original_description: str,
+        clarification_turns: list[dict[str, str]],
+        category_name: str | None,
+        max_questions: int,
+    ) -> GuidedDetailingResult:
+        raise LocalGenerativeAIUnavailableError("offline")
+
+
+class UnavailableOrganizer:
+    def organize_ticket_description(
+        self,
+        user_text: str,
+        category_name: str | None = None,
+        purpose: str = "descricao_chamado",
+    ) -> DescriptionOrganizationResult:
+        raise LocalGenerativeAIUnavailableError("offline")
 
 
 def send(controller: ConversationFlowController, session_id: str, message: str):
@@ -98,10 +120,11 @@ def test_guided_flow_asks_one_question_and_then_suggests_category() -> None:
     )
 
     assert clarification.state == "description_clarification"
-    assert "Pergunta 1 de até 5" in clarification.bot_message
+    assert "Pergunta 1 de até 1" in clarification.bot_message
     assert category.state == "category_assignment_confirmation"
     assert "Computador / Notebook" in category.bot_message
-    assert detailer.calls[1]["clarification_turns"][0]["answer"].startswith("É o")
+    assert len(detailer.calls) == 1
+    assert "É o notebook do financeiro" in category.bot_message
 
 
 def test_guided_flow_proceeds_with_summary_when_user_skips_answer() -> None:
@@ -236,3 +259,47 @@ def test_guided_flow_uses_collected_answer_instead_of_generic_original_summary()
     assert "A nota fiscal não aparece para lançamento" in result.bot_message
     assert "problema grave de nota. A nota" not in result.bot_message
     assert "relatou que o problema é grave" not in result.bot_message
+    assert "Considero o problema grave" in result.bot_message
+
+
+def test_guided_flow_builds_first_person_summary_without_internal_text() -> None:
+    detailer = SequencedDetailer(
+        [ask("Poderia especificar qual erro aparece na nota?")]
+    )
+    controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=True),
+        description_organizer=EchoDescriptionOrganizer(),
+        description_detailer=detailer,
+    )
+    session_id = str(uuid4())
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "Estou com um problema de nota")
+    result = send(
+        controller,
+        session_id,
+        "Estou com um problema que durante a visualizacao na tela 1234, a nota exibe o erro 123.456.789.",
+    )
+
+    assert result.state == "category_assignment_confirmation"
+    assert "O usuario informou inicialmente" not in result.bot_message
+    assert "Depois, acrescentou" not in result.bot_message
+    assert "O usuario" not in result.bot_message
+    assert "Estou com um problema de nota. Durante a visualizacao na tela 1234" in result.bot_message
+
+
+def test_guided_flow_falls_back_when_local_ai_is_unavailable() -> None:
+    controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=True),
+        description_organizer=UnavailableOrganizer(),
+        description_detailer=UnavailableDetailer(),
+    )
+    session_id = str(uuid4())
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    result = send(controller, session_id, "Preciso de acesso ao sistema financeiro")
+
+    assert result.state == "category_assignment_confirmation"
+    assert "Preciso de acesso ao sistema financeiro." in result.bot_message

@@ -3,9 +3,9 @@ import re
 from app.application_config.settings import AppSettings
 from app.local_light_ai.generative_description_organizer import (
     LocalGenerativeClient,
-    MockLocalGenerativeClient,
-    OllamaLocalGenerativeClient,
+    build_local_generative_client,
 )
+from app.triage_rules.title_generation_service import TitleGenerationService
 
 
 class GenerativeTitleGenerator:
@@ -37,6 +37,7 @@ class GenerativeTitleGenerator:
                 options={
                     "temperature": 0.2,
                     "num_predict": self.num_predict,
+                    "purpose": "titulo_chamado",
                 },
             )
             title = str(payload.get("title", "")).strip()
@@ -60,13 +61,11 @@ class GenerativeTitleGenerator:
         return (title or "Chamado de TI")[:100]
 
 
-def build_generative_title_generator(settings: AppSettings) -> GenerativeTitleGenerator:
-    if settings.local_light_ai_mode.casefold() == "mock":
-        client = MockLocalGenerativeClient()
-    else:
-        client = OllamaLocalGenerativeClient(
-            base_url=settings.ollama_base_url,
-            model=settings.local_generative_model,
-            timeout_seconds=settings.local_generative_timeout_seconds,
-        )
+def build_generative_title_generator(
+    settings: AppSettings,
+) -> GenerativeTitleGenerator | TitleGenerationService:
+    if not settings.ai_generative_title_enabled:
+        return TitleGenerationService()
+
+    client, _ = build_local_generative_client(settings)
     return GenerativeTitleGenerator(client=client, num_predict=150)

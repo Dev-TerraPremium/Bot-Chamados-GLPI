@@ -6,7 +6,7 @@ from app.application_config.settings import AppSettings
 from app.local_light_ai.description_organization_models import GuidedDetailingResult
 from app.local_light_ai.generative_description_organizer import (
     LocalGenerativeClient,
-    OllamaLocalGenerativeClient,
+    build_local_generative_client,
 )
 
 
@@ -21,6 +21,7 @@ class GuidedTicketDetailer:
         max_output_chars: int = 800,
         max_question_chars: int = 180,
         num_predict: int = 180,
+        num_thread: int = 4,
         temperature: float = 0.1,
     ) -> None:
         self.client = client
@@ -29,6 +30,7 @@ class GuidedTicketDetailer:
         self.max_output_chars = max_output_chars
         self.max_question_chars = max_question_chars
         self.num_predict = num_predict
+        self.num_thread = max(1, num_thread)
         self.temperature = temperature
 
     def detail_ticket_description(
@@ -45,27 +47,19 @@ class GuidedTicketDetailer:
         if len(self._build_context_text(original_description, turns)) > self.max_input_chars:
             return self._ready_result(original_description, turns, confidence=0.55)
 
-        model_payload = self.client.generate_json(
-            system_prompt=self._build_system_prompt(),
-            user_prompt=self._build_user_prompt(
-                original_description=original_description,
-                clarification_turns=turns,
-                max_questions=max_questions,
-            ),
-            options={
-                "temperature": self.temperature,
-                "top_p": 0.8,
-                "top_k": 20,
-                "num_ctx": 1536,
-                "num_predict": self.num_predict,
-            },
-        )
-        return self._normalize_model_payload(
-            model_payload=model_payload,
-            original_description=original_description,
-            clarification_turns=turns,
-            max_questions=max_questions,
-        )
+        if not turns and self._needs_more_triage(original_description, turns):
+            return GuidedDetailingResult(
+                status="ask_next",
+                next_question=self._fallback_question(original_description, turns),
+                organized_text="",
+                confidence=0.75,
+                backend="local-guided-question",
+            )
+
+        if turns or not self._needs_more_triage(original_description, turns):
+            return self._ready_result(original_description, turns, confidence=0.72)
+
+        return self._ready_result(original_description, turns, confidence=0.65)
 
     def _normalize_model_payload(
         self,
@@ -348,23 +342,11 @@ class GuidedTicketDetailer:
     @staticmethod
     def _build_system_prompt() -> str:
         return (
-            "Voce e uma IA local para entrevista guiada de chamados de TI em portugues do Brasil.\n"
-            "Atue como analista de primeiro atendimento: investigue somente o necessario para abrir um chamado claro.\n"
-            "Sua tarefa e decidir se ja existe detalhe suficiente ou se falta exatamente uma pergunta objetiva.\n"
-            "Voce NAO escreve a descricao final do chamado.\n"
-            "Responda somente JSON valido.\n\n"
-            "Regras:\n"
-            "1. Use status ask_next para fazer exatamente uma pergunta curta e contextual.\n"
-            "2. Use status ready apenas quando houver informacao suficiente para o atendimento entender o que precisa ser feito.\n"
-            "3. Avalie lacunas universais, sem depender de categoria fixa: item ou servico afetado, intencao do pedido, motivo ou sintoma, escopo/impacto, local/setor, erro exibido, quando ocorre e tentativa/evidencia ja informada.\n"
-            "4. Pergunte somente a lacuna mais util naquele momento; nao faca checklist completo.\n"
-            "5. Adapte a pergunta pela resposta anterior; nao repita pergunta ja feita.\n"
-            "6. Se a solicitacao for pedido de algo novo, entenda a finalidade ou justificativa quando isso melhorar o chamado.\n"
-            "7. Se for problema/falha, entenda sintoma, frequencia, alcance e tentativa simples ja feita quando isso melhorar o chamado.\n"
-            "8. Nao peca senha, token, codigo, CPF, RG ou dado sensivel.\n"
-            "9. Nao peca comandos tecnicos e nao invente causa, diagnostico, sistema, local, gravidade ou solucao.\n"
-            "10. Se estiver pronto, deixe next_question vazio.\n\n"
-            "JSON exato: status, next_question, confidence."
+            "Voce faz entrevista curta para abrir chamados de TI em portugues do Brasil.\n"
+            "Responda somente JSON com: status, next_question, confidence.\n"
+            "Use ask_next para fazer uma unica pergunta objetiva e util.\n"
+            "Use ready somente quando ja houver detalhe suficiente para o atendimento entender o pedido ou problema.\n"
+            "Nao repita pergunta, nao invente causa, sistema, local, gravidade ou solucao e nao peca dado sensivel."
         )
 
     @staticmethod
@@ -432,16 +414,13 @@ def build_guided_ticket_detailer(settings: AppSettings) -> GuidedTicketDetailer:
     if settings.local_light_ai_mode.casefold() == "mock":
         return MockGuidedTicketDetailer()
 
-    client = OllamaLocalGenerativeClient(
-        base_url=settings.ollama_base_url,
-        model=settings.local_generative_model,
-        timeout_seconds=settings.local_generative_timeout_seconds,
-    )
+    client, backend_name = build_local_generative_client(settings)
     return GuidedTicketDetailer(
         client=client,
-        backend_name=f"ollama:{settings.local_generative_model}",
+        backend_name=backend_name,
         max_input_chars=settings.ai_max_input_chars,
         max_output_chars=settings.ai_max_output_chars,
         num_predict=settings.ai_ollama_num_predict,
+        num_thread=settings.ai_ollama_num_thread,
         temperature=settings.ai_ollama_temperature,
     )

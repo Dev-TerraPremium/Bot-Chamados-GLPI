@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 import unicodedata
 from uuid import uuid4
 
@@ -469,6 +470,11 @@ class ConversationFlowController:
                     context,
                     self._build_detailing_source_text(context),
                 )
+            return self._advance_from_organized_description(
+                context,
+                self._fallback_description_text(message),
+                category_source_text=message,
+            )
 
         return self._finalize_direct_description(context, message)
 
@@ -520,9 +526,11 @@ class ConversationFlowController:
                 self._build_detailing_source_text(context),
             )
 
-        return self._finalize_guided_description(
+        source_text = self._build_detailing_source_text(context)
+        return self._advance_from_organized_description(
             context,
-            self._build_detailing_source_text(context),
+            self._fallback_description_text(source_text),
+            category_source_text=source_text,
         )
 
     def _handle_category_assignment_confirmation(
@@ -1185,6 +1193,16 @@ class ConversationFlowController:
             )
         context.pending_category_suggestion_id = category_match.category_id
         context.pending_category_suggestion_name = category_match.category_name
+        logger.info(
+            "category_suggestion_completed",
+            extra={
+                "session_id": context.session_id,
+                "state": context.state.value,
+                "category_id": category_match.category_id,
+                "category_source": category_match.matched_keyword,
+                "confidence": category_match.confidence,
+            },
+        )
         self.state_machine.transition_to(
             context,
             ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION,
@@ -1204,13 +1222,26 @@ class ConversationFlowController:
     ) -> GuidedDetailingResult | None:
         if self.description_detailer is None:
             return None
+        started_at = time.perf_counter()
         try:
-            return self.description_detailer.detail_ticket_description(
+            result = self.description_detailer.detail_ticket_description(
                 original_description=context.original_description or "",
                 clarification_turns=context.description_clarification_turns,
                 category_name=context.selected_category_name,
                 max_questions=self.settings.ai_max_clarification_questions,
             )
+            logger.info(
+                "guided_detailing_completed",
+                extra={
+                    "session_id": context.session_id,
+                    "state": context.state.value,
+                    "purpose": "descricao_chamado_pergunta_guiada",
+                    "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "backend": result.backend,
+                    "status": result.status,
+                },
+            )
+            return result
         except LocalGenerativeAIUnavailableError:
             logger.exception(
                 "local_guided_detailing_unavailable",
@@ -1223,15 +1254,50 @@ class ConversationFlowController:
         if not context.description_clarification_turns:
             return original_description
 
-        lines = [f"O usuario informou inicialmente: {original_description}"]
-        detail_answers = []
-        for index, turn in enumerate(context.description_clarification_turns, start=1):
+        parts: list[str] = []
+        has_severity_marker = bool(self._severity_marker_label(original_description))
+        if original_description and (
+            not self._original_description_is_generic_for_summary(original_description)
+            or not has_severity_marker
+        ):
+            parts.append(original_description)
+
+        for turn in context.description_clarification_turns:
             answer = self._clip_text(turn.get("answer", ""), 240)
             if answer:
-                detail_answers.append(f"{index}. {answer}")
-        if detail_answers:
-            lines.append("Depois, acrescentou estes detalhes: " + " ".join(detail_answers))
-        return "\n".join(lines).strip()
+                parts.append(self._clean_guided_answer_for_summary(answer))
+        return self._join_first_person_summary(parts)
+
+    @staticmethod
+    def _clean_guided_answer_for_summary(answer: str) -> str:
+        text = " ".join((answer or "").strip().split()).strip(" .")
+        text = re.sub(
+            r"^(estou\s+com\s+(?:um\s+)?problema\s+que|o\s+problema\s+(?:e|é)\s+que|(?:e|é)\s+que)\s+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if text:
+            text = text[0].upper() + text[1:]
+        return text
+
+    @classmethod
+    def _join_first_person_summary(cls, parts: list[str]) -> str:
+        sentences = []
+        seen: set[str] = set()
+        for part in parts:
+            text = " ".join((part or "").strip().split()).strip(" .")
+            if not text:
+                continue
+            key = cls._normalize_control_text(text)
+            if key in seen:
+                continue
+            seen.add(key)
+            if text.endswith(("!", "?")):
+                sentences.append(text)
+            else:
+                sentences.append(text + ".")
+        return " ".join(sentences)
 
     def _reset_description_for_rewrite(self, context: ConversationContext) -> None:
         context.original_description = None
@@ -1297,7 +1363,7 @@ class ConversationFlowController:
         if self._normalize_control_text(severity_label) in normalized_text:
             return organized_text
 
-        suffix = f"O usuário relatou que o problema é {severity_label}."
+        suffix = f"Considero o problema {severity_label}."
         if organized_text.endswith((".", "!", "?")):
             return f"{organized_text} {suffix}"
         return f"{organized_text}. {suffix}"
@@ -1334,27 +1400,60 @@ class ConversationFlowController:
         message: str,
         purpose: str,
     ) -> DescriptionOrganizationResult:
+        started_at = time.perf_counter()
         try:
-            return self.description_organizer.organize_ticket_description(
+            result = self.description_organizer.organize_ticket_description(
                 user_text=message,
                 category_name=context.selected_category_name,
                 purpose=purpose,
             )
+            logger.info(
+                "description_organization_completed",
+                extra={
+                    "session_id": context.session_id,
+                    "state": context.state.value,
+                    "purpose": purpose,
+                    "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "backend": result.backend,
+                    "status": result.status,
+                },
+            )
+            return result
         except LocalGenerativeAIUnavailableError:
             logger.exception(
                 "local_generative_ai_unavailable",
-                extra={"session_id": context.session_id, "state": context.state.value},
+                extra={
+                    "session_id": context.session_id,
+                    "state": context.state.value,
+                    "purpose": purpose,
+                    "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                },
             )
             return DescriptionOrganizationResult(
-                status="needs_clarification",
-                organized_text="",
-                clarification_question=(
-                    "🤖 A IA generativa local não está disponível agora. "
-                    "Verifique o Ollama/modelo local e envie a descrição novamente."
-                ),
-                confidence=0.0,
-                backend="unavailable",
+                status="organized",
+                organized_text=self._fallback_description_text(message),
+                clarification_question="",
+                confidence=0.35,
+                backend="unavailable-fallback",
             )
+
+    @staticmethod
+    def _fallback_description_text(message: str) -> str:
+        text = " ".join((message or "").strip().split())
+        text = re.sub(r"^O usuario informou inicialmente:\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^O usuário informou inicialmente:\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"\bDepois, acrescentou estes detalhes:\s*",
+            ". ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\b\d+\.\s+", "", text).strip(" .")
+        if not text:
+            return "Solicitacao sem descricao detalhada."
+        if text.endswith((".", "!", "?")):
+            return text
+        return text + "."
 
     def _render_ticket_list(
         self,

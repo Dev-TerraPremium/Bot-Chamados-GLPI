@@ -42,8 +42,16 @@ def runtime_healthcheck() -> dict:
         "redis": redis_status,
         "celery_workers_enabled": settings.use_celery_workers,
         "glpi_integration_mode": settings.glpi_integration_mode,
+        "local_light_ai_mode": settings.local_light_ai_mode,
+        "local_ollama_enabled": settings.local_ollama_enabled,
+        "google_ai_model": settings.google_ai_model,
+        "google_ai_timeout_seconds": settings.google_ai_timeout_seconds,
+        "google_ai_max_retries": settings.google_ai_max_retries,
+        "google_ai_rpm_limit": settings.google_ai_rpm_limit,
+        "google_ai_rpd_limit": settings.google_ai_rpd_limit,
         "ai_guided_detailing_enabled": settings.ai_guided_detailing_enabled,
         "ai_max_clarification_questions": settings.ai_max_clarification_questions,
+        "ai_generative_title_enabled": settings.ai_generative_title_enabled,
         "debug_routes_exposed": settings.expose_debug_routes,
     }
 

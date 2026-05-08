@@ -1,4 +1,6 @@
 from dataclasses import asdict
+import logging
+import time
 
 from app.application_config.settings import load_settings
 from app.background_jobs.celery_app import celery_app
@@ -13,6 +15,13 @@ from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
 
 
 worker_ticket_store = InMemoryTicketStore()
+logger = logging.getLogger(__name__)
+
+
+def _queue_wait_ms(enqueued_at: float | None) -> int:
+    if enqueued_at is None:
+        return 0
+    return max(0, int((time.time() - enqueued_at) * 1000))
 
 
 def _build_glpi_client():
@@ -45,13 +54,48 @@ def organize_description_task(
     user_text: str,
     category_name: str | None,
     purpose: str,
+    enqueued_at: float | None = None,
 ) -> dict:
+    started_at = time.perf_counter()
+    queue_wait_ms = _queue_wait_ms(enqueued_at)
+    logger.info(
+        "ai_task_started",
+        extra={
+            "purpose": purpose,
+            "queue_wait_ms": queue_wait_ms,
+            "task": "organize_description_task",
+        },
+    )
     organizer = build_generative_description_organizer(load_settings())
-    return asdict(organizer.organize_ticket_description(
-        user_text=user_text,
-        category_name=category_name,
-        purpose=purpose,
-    ))
+    try:
+        result = asdict(
+            organizer.organize_ticket_description(
+                user_text=user_text,
+                category_name=category_name,
+                purpose=purpose,
+            )
+        )
+    except Exception:
+        logger.exception(
+            "ai_task_failed",
+            extra={
+                "purpose": purpose,
+                "queue_wait_ms": queue_wait_ms,
+                "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                "task": "organize_description_task",
+            },
+        )
+        raise
+    logger.info(
+        "ai_task_completed",
+        extra={
+            "purpose": purpose,
+            "queue_wait_ms": queue_wait_ms,
+            "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+            "task": "organize_description_task",
+        },
+    )
+    return result
 
 
 @celery_app.task(
@@ -64,16 +108,49 @@ def detail_ticket_description_task(
     clarification_turns: list[dict[str, str]],
     category_name: str | None,
     max_questions: int,
+    enqueued_at: float | None = None,
 ) -> dict:
-    detailer = build_guided_ticket_detailer(load_settings())
-    return asdict(
-        detailer.detail_ticket_description(
-            original_description=original_description,
-            clarification_turns=clarification_turns,
-            category_name=category_name,
-            max_questions=max_questions,
-        )
+    started_at = time.perf_counter()
+    queue_wait_ms = _queue_wait_ms(enqueued_at)
+    logger.info(
+        "ai_task_started",
+        extra={
+            "purpose": "descricao_chamado_pergunta_guiada",
+            "queue_wait_ms": queue_wait_ms,
+            "task": "detail_ticket_description_task",
+        },
     )
+    detailer = build_guided_ticket_detailer(load_settings())
+    try:
+        result = asdict(
+            detailer.detail_ticket_description(
+                original_description=original_description,
+                clarification_turns=clarification_turns,
+                category_name=category_name,
+                max_questions=max_questions,
+            )
+        )
+    except Exception:
+        logger.exception(
+            "ai_task_failed",
+            extra={
+                "purpose": "descricao_chamado_pergunta_guiada",
+                "queue_wait_ms": queue_wait_ms,
+                "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                "task": "detail_ticket_description_task",
+            },
+        )
+        raise
+    logger.info(
+        "ai_task_completed",
+        extra={
+            "purpose": "descricao_chamado_pergunta_guiada",
+            "queue_wait_ms": queue_wait_ms,
+            "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+            "task": "detail_ticket_description_task",
+        },
+    )
+    return result
 
 
 @celery_app.task(

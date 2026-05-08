@@ -39,14 +39,25 @@ class AppSettings:
     state_backend: str = "memory"
     use_celery_workers: bool = False
     local_light_ai_mode: str = "generative_ollama"
+    local_ollama_enabled: bool = True
     ollama_base_url: str = "http://127.0.0.1:11434"
-    local_generative_model: str = "qwen2.5:1.5b"
+    local_generative_model: str = "qwen2.5:0.5b"
     local_generative_timeout_seconds: float = 30.0
+    google_ai_api_key: str = ""
+    google_ai_model: str = "gemini-3.1-flash-lite"
+    google_ai_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    google_ai_timeout_seconds: float = 12.0
+    google_ai_max_retries: int = 1
+    google_ai_rpm_limit: int = 12
+    google_ai_rpd_limit: int = 450
+    google_ai_rate_limit_enabled: bool = True
     ai_guided_detailing_enabled: bool = True
-    ai_max_clarification_questions: int = 5
+    ai_max_clarification_questions: int = 1
+    ai_generative_title_enabled: bool = False
     ai_max_input_chars: int = 1000
     ai_max_output_chars: int = 800
     ai_ollama_num_predict: int = 300
+    ai_ollama_num_thread: int = 4
     ai_ollama_temperature: float = 0.1
     max_message_length: int = 1000
     rate_limit_messages_per_minute: int = 20
@@ -90,6 +101,14 @@ class AppSettings:
     def is_redis_state_enabled(self) -> bool:
         return self.state_backend.casefold() == "redis"
 
+    @property
+    def is_google_ai_mode(self) -> bool:
+        return self.local_light_ai_mode.casefold() == "generative_google"
+
+    @property
+    def is_ollama_mode(self) -> bool:
+        return self.local_light_ai_mode.casefold() in {"generative_ollama", "ollama"}
+
     def validate_runtime_requirements(self) -> None:
         if self.is_glpi_real_mode:
             missing = []
@@ -120,19 +139,33 @@ def load_settings() -> AppSettings:
         state_backend=os.getenv("STATE_BACKEND", "memory"),
         use_celery_workers=_get_bool("USE_CELERY_WORKERS", False),
         local_light_ai_mode=os.getenv("LOCAL_LIGHT_AI_MODE", "generative_ollama"),
+        local_ollama_enabled=_get_bool("LOCAL_OLLAMA_ENABLED", True),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
         local_generative_model=os.getenv(
             "LOCAL_GENERATIVE_MODEL",
-            "qwen2.5:1.5b",
+            "qwen2.5:0.5b",
         ),
         local_generative_timeout_seconds=_get_float(
             "LOCAL_GENERATIVE_TIMEOUT_SECONDS", 30.0
         ),
+        google_ai_api_key=os.getenv("GOOGLE_AI_API_KEY", ""),
+        google_ai_model=os.getenv("GOOGLE_AI_MODEL", "gemini-3.1-flash-lite"),
+        google_ai_base_url=os.getenv(
+            "GOOGLE_AI_BASE_URL",
+            "https://generativelanguage.googleapis.com/v1beta",
+        ),
+        google_ai_timeout_seconds=_get_float("GOOGLE_AI_TIMEOUT_SECONDS", 12.0),
+        google_ai_max_retries=_get_int("GOOGLE_AI_MAX_RETRIES", 1),
+        google_ai_rpm_limit=_get_int("GOOGLE_AI_RPM_LIMIT", 12),
+        google_ai_rpd_limit=_get_int("GOOGLE_AI_RPD_LIMIT", 450),
+        google_ai_rate_limit_enabled=_get_bool("GOOGLE_AI_RATE_LIMIT_ENABLED", True),
         ai_guided_detailing_enabled=_get_bool("AI_GUIDED_DETAILING_ENABLED", True),
-        ai_max_clarification_questions=_get_int("AI_MAX_CLARIFICATION_QUESTIONS", 5),
+        ai_max_clarification_questions=_get_int("AI_MAX_CLARIFICATION_QUESTIONS", 1),
+        ai_generative_title_enabled=_get_bool("AI_GENERATIVE_TITLE_ENABLED", False),
         ai_max_input_chars=_get_int("AI_MAX_INPUT_CHARS", 1000),
         ai_max_output_chars=_get_int("AI_MAX_OUTPUT_CHARS", 800),
         ai_ollama_num_predict=_get_int("AI_OLLAMA_NUM_PREDICT", 300),
+        ai_ollama_num_thread=_get_int("AI_OLLAMA_NUM_THREAD", 4),
         ai_ollama_temperature=_get_float("AI_OLLAMA_TEMPERATURE", 0.1),
         max_message_length=_get_int("MAX_MESSAGE_LENGTH", 1000),
         rate_limit_messages_per_minute=_get_int(

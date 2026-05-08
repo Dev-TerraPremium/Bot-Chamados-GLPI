@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+import time
 import unicodedata
 from typing import Any, Protocol
 
@@ -12,6 +14,9 @@ from app.local_light_ai.description_organization_models import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class LocalGenerativeClient(Protocol):
     def generate_json(
         self,
@@ -22,6 +27,63 @@ class LocalGenerativeClient(Protocol):
         pass
 
 
+class GoogleAIRateLimiter:
+    def __init__(
+        self,
+        redis_url: str,
+        *,
+        rpm_limit: int,
+        rpd_limit: int,
+        enabled: bool = True,
+    ) -> None:
+        self.rpm_limit = max(0, rpm_limit)
+        self.rpd_limit = max(0, rpd_limit)
+        self.enabled = enabled
+        self.redis_client = None
+        if not enabled:
+            return
+        try:
+            import redis
+
+            self.redis_client = redis.Redis.from_url(redis_url)
+        except Exception:
+            logger.warning("google_ai_rate_limiter_unavailable", exc_info=True)
+
+    def allow_request(self) -> bool:
+        if not self.enabled or self.redis_client is None:
+            return True
+        if self.rpm_limit <= 0 and self.rpd_limit <= 0:
+            return True
+
+        minute_key = time.strftime("google_ai_quota:rpm:%Y%m%d%H%M", time.gmtime())
+        day_key = time.strftime("google_ai_quota:rpd:%Y%m%d", time.gmtime())
+        try:
+            pipe = self.redis_client.pipeline()
+            pipe.incr(minute_key)
+            pipe.expire(minute_key, 120)
+            pipe.incr(day_key)
+            pipe.expire(day_key, 172800)
+            minute_count, _, day_count, _ = pipe.execute()
+        except Exception:
+            logger.warning("google_ai_rate_limit_check_failed", exc_info=True)
+            return True
+
+        over_rpm = self.rpm_limit > 0 and int(minute_count) > self.rpm_limit
+        over_rpd = self.rpd_limit > 0 and int(day_count) > self.rpd_limit
+        if over_rpm or over_rpd:
+            logger.warning(
+                "google_ai_rate_limit_exceeded",
+                extra={
+                    "google_ai_rpm_limit": self.rpm_limit,
+                    "google_ai_rpd_limit": self.rpd_limit,
+                    "google_ai_rpm_count": int(minute_count),
+                    "google_ai_rpd_count": int(day_count),
+                },
+            )
+            return False
+        return True
+
+
 class MockLocalGenerativeClient:
     def generate_json(
         self,
@@ -29,16 +91,16 @@ class MockLocalGenerativeClient:
         user_prompt: str,
         options: dict[str, Any],
     ) -> dict[str, Any]:
-        user_text_prefix = "Texto original do usuário:"
+        user_text_prefix = "Texto original do usuario:"
         user_text = user_prompt.split(user_text_prefix, maxsplit=1)[-1]
-        user_text = user_text.split("Organize somente o texto original.", maxsplit=1)[0]
+        user_text = user_text.split("\n\n", maxsplit=1)[0]
         normalized_text = " ".join(user_text.strip().split())
         if not normalized_text:
             return {
                 "status": "needs_clarification",
                 "organized_text": "",
                 "clarification_question": (
-                    "Pode descrever o problema ou solicitação em uma frase curta?"
+                    "Pode descrever o problema ou solicitacao em uma frase curta?"
                 ),
                 "confidence": 0.0,
             }
@@ -88,7 +150,7 @@ class OllamaLocalGenerativeClient:
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise LocalGenerativeAIUnavailableError(
-                "Não foi possível acionar a IA generativa local via Ollama."
+                "Nao foi possivel acionar a IA generativa local via Ollama."
             ) from exc
 
         response_payload = response.json()
@@ -105,6 +167,242 @@ class OllamaLocalGenerativeClient:
             ) from exc
 
 
+class GoogleAILocalGenerativeClient:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        api_key: str,
+        timeout_seconds: float,
+        max_retries: int = 1,
+        rate_limiter: GoogleAIRateLimiter | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.api_key = api_key
+        self.timeout_seconds = max(1.0, timeout_seconds)
+        self.max_retries = max(0, max_retries)
+        self.rate_limiter = rate_limiter
+
+    def generate_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self.api_key:
+            raise LocalGenerativeAIUnavailableError(
+                "Google AI API key ausente."
+            )
+        if self.rate_limiter is not None and not self.rate_limiter.allow_request():
+            raise LocalGenerativeAIUnavailableError(
+                "Limite configurado de uso do Google AI atingido."
+            )
+
+        generation_config = {
+            "temperature": options.get("temperature", 0.1),
+            "topP": options.get("top_p", 0.8),
+            "topK": options.get("top_k", 20),
+            "maxOutputTokens": int(options.get("num_predict", 256)),
+            "responseMimeType": "application/json",
+        }
+        payload = {
+            "systemInstruction": {
+                "parts": [{"text": system_prompt}],
+            },
+            "contents": [
+                {
+                    "parts": [{"text": user_prompt}],
+                }
+            ],
+            "generationConfig": generation_config,
+        }
+        response = None
+        last_error: Exception | None = None
+        purpose = str(options.get("purpose") or "unknown")
+        started_at = time.perf_counter()
+        attempts_allowed = self.max_retries + 1
+        for attempt in range(attempts_allowed):
+            attempt_started_at = time.perf_counter()
+            status_code = 0
+            try:
+                response = httpx.post(
+                    f"{self.base_url}/models/{self.model}:generateContent",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-goog-api-key": self.api_key,
+                    },
+                    json=payload,
+                    timeout=self.timeout_seconds,
+                )
+                status_code = response.status_code
+                response.raise_for_status()
+                logger.info(
+                    "google_ai_request_attempt",
+                    extra={
+                        "model": self.model,
+                        "purpose": purpose,
+                        "google_attempt": attempt + 1,
+                        "google_attempts": attempt + 1,
+                        "google_duration_ms": int(
+                            (time.perf_counter() - attempt_started_at) * 1000
+                        ),
+                        "status_code": status_code,
+                    },
+                )
+                break
+            except httpx.HTTPStatusError as exc:
+                response = exc.response
+                status_code = response.status_code
+                last_error = exc
+                logger.warning(
+                    "google_ai_request_attempt_failed",
+                    extra={
+                        "model": self.model,
+                        "purpose": purpose,
+                        "google_attempt": attempt + 1,
+                        "google_attempts": attempt + 1,
+                        "google_duration_ms": int(
+                            (time.perf_counter() - attempt_started_at) * 1000
+                        ),
+                        "status_code": status_code,
+                    },
+                )
+                if (
+                    response.status_code not in {429, 500, 502, 503, 504}
+                    or attempt >= self.max_retries
+                ):
+                    raise LocalGenerativeAIUnavailableError(
+                        "Nao foi possivel acionar a IA generativa Google."
+                    ) from exc
+            except httpx.HTTPError as exc:
+                last_error = exc
+                logger.warning(
+                    "google_ai_request_attempt_failed",
+                    extra={
+                        "model": self.model,
+                        "purpose": purpose,
+                        "google_attempt": attempt + 1,
+                        "google_attempts": attempt + 1,
+                        "google_duration_ms": int(
+                            (time.perf_counter() - attempt_started_at) * 1000
+                        ),
+                        "status_code": status_code,
+                    },
+                )
+                if attempt >= self.max_retries:
+                    raise LocalGenerativeAIUnavailableError(
+                        "Nao foi possivel acionar a IA generativa Google."
+                    ) from exc
+
+        if response is None:
+            raise LocalGenerativeAIUnavailableError(
+                "Nao foi possivel acionar a IA generativa Google."
+            ) from last_error
+
+        try:
+            response_payload = response.json()
+            raw_response = (
+                response_payload["candidates"][0]["content"]["parts"][0]["text"]
+            )
+            parsed_payload = json.loads(raw_response)
+            if not isinstance(parsed_payload, dict):
+                raise TypeError("Google AI JSON response must be an object.")
+            parsed_payload["_usage_metadata"] = response_payload.get(
+                "usageMetadata",
+                {},
+            )
+            logger.info(
+                "google_ai_request_completed",
+                extra={
+                    "model": self.model,
+                    "purpose": purpose,
+                    "google_attempts": attempt + 1,
+                    "google_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "status_code": response.status_code,
+                    "usageMetadata": response_payload.get("usageMetadata", {}),
+                },
+            )
+            return parsed_payload
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "google_ai_response_parse_failed",
+                extra={
+                    "model": self.model,
+                    "purpose": purpose,
+                    "google_attempts": attempt + 1,
+                    "google_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "status_code": response.status_code,
+                },
+            )
+            raise LocalGenerativeAIUnavailableError(
+                "A IA generativa Google retornou uma resposta fora do formato esperado."
+            ) from exc
+
+
+def _bounded_ai_request_timeout(settings: AppSettings) -> float:
+    # Keep the Ollama call below the Celery soft limit while honoring runtime config.
+    return max(
+        1.0,
+        min(
+            settings.local_generative_timeout_seconds,
+            max(1, settings.ai_task_timeout_seconds - 1),
+        ),
+    )
+
+
+def _bounded_google_request_timeout(settings: AppSettings) -> float:
+    # Fail fast for production UX and keep the call below the Celery soft limit.
+    return max(
+        1.0,
+        min(
+            settings.google_ai_timeout_seconds,
+            max(1, settings.ai_task_timeout_seconds - 1),
+        ),
+    )
+
+
+def build_local_generative_client(
+    settings: AppSettings,
+) -> tuple[LocalGenerativeClient, str]:
+    mode = settings.local_light_ai_mode.casefold()
+    if mode == "mock":
+        return MockLocalGenerativeClient(), "mock-local-ai"
+    if mode == "generative_google":
+        return (
+            GoogleAILocalGenerativeClient(
+                base_url=settings.google_ai_base_url,
+                model=settings.google_ai_model,
+                api_key=settings.google_ai_api_key,
+                timeout_seconds=_bounded_google_request_timeout(settings),
+                max_retries=settings.google_ai_max_retries,
+                rate_limiter=GoogleAIRateLimiter(
+                    settings.redis_url,
+                    rpm_limit=settings.google_ai_rpm_limit,
+                    rpd_limit=settings.google_ai_rpd_limit,
+                    enabled=settings.google_ai_rate_limit_enabled,
+                ),
+            ),
+            f"google:{settings.google_ai_model}",
+        )
+    if mode in {"generative_ollama", "ollama"}:
+        if not settings.local_ollama_enabled:
+            raise LocalGenerativeAIUnavailableError(
+                "A IA local via Ollama esta desabilitada por configuracao."
+            )
+        return (
+            OllamaLocalGenerativeClient(
+                base_url=settings.ollama_base_url,
+                model=settings.local_generative_model,
+                timeout_seconds=_bounded_ai_request_timeout(settings),
+            ),
+            f"ollama:{settings.local_generative_model}",
+        )
+    raise LocalGenerativeAIUnavailableError(
+        f"Modo de IA generativa nao suportado: {settings.local_light_ai_mode}."
+    )
+
+
 class GenerativeDescriptionOrganizer:
     """Local generative organizer for ticket descriptions."""
 
@@ -115,6 +413,7 @@ class GenerativeDescriptionOrganizer:
         max_input_chars: int = 1000,
         max_output_chars: int = 800,
         num_predict: int = 180,
+        num_thread: int = 4,
         temperature: float = 0.1,
     ) -> None:
         self.client = client
@@ -122,6 +421,7 @@ class GenerativeDescriptionOrganizer:
         self.max_input_chars = max_input_chars
         self.max_output_chars = max_output_chars
         self.num_predict = num_predict
+        self.num_thread = max(1, num_thread)
         self.temperature = temperature
 
     def organize_ticket_description(
@@ -135,7 +435,7 @@ class GenerativeDescriptionOrganizer:
                 status="needs_clarification",
                 organized_text="",
                 clarification_question=(
-                    "Sua descrição está muito longa para a IA local. "
+                    "Sua descricao esta muito longa para a IA local. "
                     "Envie um resumo mais curto do problema."
                 ),
                 confidence=0.0,
@@ -148,8 +448,10 @@ class GenerativeDescriptionOrganizer:
                 "temperature": self.temperature,
                 "top_p": 0.8,
                 "top_k": 20,
-                "num_ctx": 2048,
+                "num_ctx": 512,
                 "num_predict": self.num_predict,
+                "num_thread": self.num_thread,
+                "purpose": purpose,
             },
         )
         return self._normalize_model_payload(model_payload, user_text)
@@ -159,19 +461,22 @@ class GenerativeDescriptionOrganizer:
         model_payload: dict[str, Any],
         source_text: str = "",
     ) -> DescriptionOrganizationResult:
-        status = str(model_payload.get("status", "")).strip()
-        if status not in {"organized", "needs_clarification"}:
-            status = "needs_clarification"
-
+        status = self._normalize_status(model_payload.get("status"))
         organized_text = str(model_payload.get("organized_text", "")).strip()
         clarification_question = str(
             model_payload.get("clarification_question", "")
         ).strip()
+        confidence = self._normalize_confidence(model_payload.get("confidence", 0.0))
 
-        confidence = model_payload.get("confidence", 0.0)
-        if not isinstance(confidence, int | float):
-            confidence = 0.0
-        confidence = max(0.0, min(float(confidence), 1.0))
+        if status == "needs_clarification" and organized_text and not clarification_question:
+            status = "organized"
+
+        if (
+            status == "needs_clarification"
+            and organized_text
+            and len(self._normalize_text(source_text).split()) >= 5
+        ):
+            status = "organized"
 
         if status == "organized" and not organized_text:
             status = "needs_clarification"
@@ -186,15 +491,21 @@ class GenerativeDescriptionOrganizer:
             organized_text,
             source_text,
         ):
-            status = "needs_clarification"
-            organized_text = ""
-            clarification_question = (
-                "Não consegui organizar a descrição com segurança. "
-                "Pode explicar novamente o problema ou solicitação?"
-            )
+            fallback_text = self._first_person_fallback_text(source_text)
+            if fallback_text:
+                organized_text = fallback_text
+                clarification_question = ""
+                confidence = min(confidence, 0.4)
+            else:
+                status = "needs_clarification"
+                organized_text = ""
+                clarification_question = (
+                    "Nao consegui organizar a descricao com seguranca. "
+                    "Pode explicar novamente o problema ou solicitacao?"
+                )
         if status == "needs_clarification" and not clarification_question:
             clarification_question = (
-                "Não entendi bem a descrição. Pode explicar novamente o que precisa?"
+                "Nao entendi bem a descricao. Pode explicar novamente o que precisa?"
             )
 
         return DescriptionOrganizationResult(
@@ -214,27 +525,20 @@ class GenerativeDescriptionOrganizer:
         normalized_source = GenerativeDescriptionOrganizer._normalize_text(source_text)
         unsafe_fragments = (
             "nao foi identificado",
-            "não foi identificado",
             "nao identificado",
-            "não identificado",
             "foi identificado",
             "identificado e resolvido",
             "nao foi informado",
-            "não foi informado",
             "nao foi inclus",
-            "não foi inclus",
             "nao foi possivel identificar",
-            "não foi possível identificar",
             "foi resolvido",
             "foi causada",
             "foi causado",
-            "é causada",
-            "é causado",
             "e causada",
             "e causado",
             "causado por",
             "causada por",
-            "causa provável",
+            "causa provavel",
             "provavelmente",
             "pode indicar",
             "pode ser",
@@ -245,6 +549,20 @@ class GenerativeDescriptionOrganizer:
             "deve ser",
             "realize ",
             "para o equipamento",
+            "o usuario",
+            "a usuario",
+            "usuario informou",
+            "usuario reportou",
+            "usuario relatou",
+            "o solicitante",
+            "a solicitante",
+            "solicitante informou",
+            "solicitante reportou",
+            "solicitante relatou",
+            "o colaborador",
+            "a colaboradora",
+            "informou inicialmente",
+            "depois acrescentou",
         )
         if any(fragment in normalized for fragment in unsafe_fragments):
             return True
@@ -265,6 +583,26 @@ class GenerativeDescriptionOrganizer:
         )
 
     @staticmethod
+    def _first_person_fallback_text(text: str) -> str:
+        normalized = " ".join((text or "").strip().split())
+        if not normalized:
+            return ""
+        replacements = (
+            (r"^O usuario informou inicialmente:\s*", ""),
+            (r"^O usuário informou inicialmente:\s*", ""),
+            (r"\bDepois, acrescentou estes detalhes:\s*", ". "),
+            (r"\b\d+\.\s+", ""),
+        )
+        for pattern, replacement in replacements:
+            normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\s+", " ", normalized).strip(" .")
+        if not normalized:
+            return ""
+        if normalized.endswith(("!", "?")):
+            return normalized
+        return normalized + "."
+
+    @staticmethod
     def _normalize_text(text: str) -> str:
         normalized = unicodedata.normalize("NFKD", text.casefold())
         normalized = "".join(
@@ -272,42 +610,53 @@ class GenerativeDescriptionOrganizer:
         )
         return re.sub(r"\s+", " ", normalized).strip()
 
+    @classmethod
+    def _normalize_status(cls, raw_status: Any) -> str:
+        normalized = cls._normalize_text(str(raw_status))
+        if normalized in {"organized", "organizado", "organizada"}:
+            return "organized"
+        if normalized in {
+            "needs clarification",
+            "needs_clarification",
+            "need clarification",
+            "clarification",
+            "esclarecimento",
+            "precisa esclarecimento",
+            "precisa de esclarecimento",
+        }:
+            return "needs_clarification"
+        return "needs_clarification"
+
+    @classmethod
+    def _normalize_confidence(cls, raw_confidence: Any) -> float:
+        if isinstance(raw_confidence, int | float):
+            return max(0.0, min(float(raw_confidence), 1.0))
+
+        text = cls._normalize_text(str(raw_confidence))
+        if not text:
+            return 0.0
+
+        match = re.search(r"\d+(?:[.,]\d+)?", text)
+        if not match:
+            return 0.0
+
+        value = float(match.group(0).replace(",", "."))
+        if "%" in str(raw_confidence) or value > 1.0:
+            value /= 100.0
+        return max(0.0, min(value, 1.0))
+
     @staticmethod
     def _build_system_prompt() -> str:
         return (
-            "Você é uma IA local generativa usada exclusivamente para organizar "
-            "descrições curtas de chamados de TI em português do Brasil.\n\n"
-            "Tarefa única: transformar o texto bruto do usuário em UMA frase curta "
-            "de chamado, preservando a intenção original.\n\n"
-            "Regras obrigatórias:\n"
-            "1. Responda somente JSON válido.\n"
-            "2. Não converse com o usuário fora do JSON.\n"
-            "3. Preserve a voz do solicitante: normalmente comece com 'Estou', "
-            "'Preciso', 'Não consigo', 'Solicito' ou verbo equivalente ao original.\n"
-            "4. Não transforme pedido em ordem. Nunca comece com 'Realize'.\n"
-            "5. Não invente diagnóstico, causa, solução, sistema, equipamento, "
-            "usuário, setor, status ou gravidade.\n"
-            "6. Não diga que algo 'não foi identificado'. Isso é proibido.\n"
-            "7. Não negue o relato do usuário. Apenas organize o que ele disse.\n"
-            "8. Não inclua julgamentos sobre gravidade, mesmo se o usuário relatar (ex: NUNCA adicione 'O usuário relatou que o problema é grave'). Apenas relate o problema técnico.\n"
-            "9. Corrija erros óbvios de digitação apenas quando a correção for "
-            "muito segura pelo contexto.\n"
-            "10. Se não for seguro corrigir, retorne needs_clarification.\n\n"
-            "Exemplos corretos:\n"
-            "Entrada: Estou com problema grave no meu desktop\n"
-            "Saída: {\"status\":\"organized\",\"organized_text\":\"Estou com um problema grave no meu desktop.\",\"clarification_question\":\"\",\"confidence\":0.9}\n"
-            "Entrada: Preciso realizar um desktopi nov para mim\n"
-            "Saída: {\"status\":\"organized\",\"organized_text\":\"Preciso solicitar um desktop novo para mim.\",\"clarification_question\":\"\",\"confidence\":0.78}\n"
-            "Entrada: não consigo abrir e-mail\n"
-            "Saída: {\"status\":\"organized\",\"organized_text\":\"Não consigo abrir o e-mail.\",\"clarification_question\":\"\",\"confidence\":0.88}\n"
-            "Entrada: negocio la tela coisa ruim\n"
-            "Saída: {\"status\":\"needs_clarification\",\"organized_text\":\"\",\"clarification_question\":\"Pode explicar melhor qual sistema, equipamento ou erro está com problema?\",\"confidence\":0.25}\n\n"
-            "Exemplos proibidos:\n"
-            "- 'Seu problema não foi identificado.'\n"
-            "- 'Realize um desktop novo.'\n"
-            "- 'O problema provavelmente é rede.'\n\n"
-            "O JSON deve ter exatamente as chaves: status, organized_text, "
-            "clarification_question, confidence."
+            "Voce organiza descricoes curtas de chamados de TI em portugues do Brasil.\n"
+            "Responda somente JSON com: status, organized_text, clarification_question, confidence.\n"
+            "Escreva sempre como relato do solicitante em primeira pessoa.\n"
+            "Use organized quando o texto estiver claro e preserve a intencao original em uma frase curta.\n"
+            "Preserve telas, codigos, numeros, mensagens de erro e nomes exatamente como foram enviados.\n"
+            "Use needs_clarification somente quando o texto estiver vago demais.\n"
+            "Nao invente causa, solucao, sistema, equipamento, setor, usuario ou gravidade.\n"
+            "Nunca use terceira pessoa: 'o usuario', 'solicitante', 'reportou', 'relatou' ou 'informou'.\n"
+            "Nao escreva frases como 'nao foi identificado', 'realize' ou 'provavelmente'."
         )
 
     @staticmethod
@@ -317,11 +666,14 @@ class GenerativeDescriptionOrganizer:
         purpose: str,
     ) -> str:
         return (
-            f"Texto original do usuário: {user_text}\n\n"
-            "Organize somente o texto original. Não mencione estado do fluxo, "
-            "perguntas internas ou dados ausentes.\n"
-            "Se o texto já estiver claro, apenas corrija pontuação e pequenos erros.\n\n"
-            "Retorne JSON neste formato exato:\n"
+            f"Texto original do usuario: {user_text}\n\n"
+            "Organize somente o texto original em primeira pessoa. "
+            "Se ja estiver claro, apenas corrija pontuacao e pequenos erros.\n"
+            "Se faltar contexto essencial, faca uma pergunta curta.\n\n"
+            "Exemplo de estilo correto: Estou com problema de nota. Durante a visualizacao na tela 1234, "
+            "a nota exibe o erro 123.456.789.\n"
+            "Exemplo proibido: O usuario informou que esta com problema de nota.\n\n"
+            "Retorne JSON neste formato:\n"
             "{\n"
             '  "status": "organized" ou "needs_clarification",\n'
             '  "organized_text": "texto curto organizado ou vazio",\n'
@@ -334,16 +686,7 @@ class GenerativeDescriptionOrganizer:
 def build_generative_description_organizer(
     settings: AppSettings,
 ) -> GenerativeDescriptionOrganizer:
-    if settings.local_light_ai_mode.casefold() == "mock":
-        client = MockLocalGenerativeClient()
-        backend_name = "mock-local-ai"
-    else:
-        client = OllamaLocalGenerativeClient(
-            base_url=settings.ollama_base_url,
-            model=settings.local_generative_model,
-            timeout_seconds=settings.local_generative_timeout_seconds,
-        )
-        backend_name = f"ollama:{settings.local_generative_model}"
+    client, backend_name = build_local_generative_client(settings)
 
     return GenerativeDescriptionOrganizer(
         client=client,
@@ -351,5 +694,6 @@ def build_generative_description_organizer(
         max_input_chars=settings.ai_max_input_chars,
         max_output_chars=settings.ai_max_output_chars,
         num_predict=settings.ai_ollama_num_predict,
+        num_thread=settings.ai_ollama_num_thread,
         temperature=settings.ai_ollama_temperature,
     )
