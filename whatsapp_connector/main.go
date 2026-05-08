@@ -53,6 +53,9 @@ var connectorStartedAt = time.Now()
 var digitsOnly = regexp.MustCompile(`\D+`)
 var inflightMu sync.Mutex
 var inflightBySender = map[string]inflightEntry{}
+var stateMu sync.Mutex
+var lastBotStateBySender = map[string]string{}
+var waitMessageIndexBySender = map[string]int{}
 
 type inflightEntry struct {
 	startedAt    time.Time
@@ -61,7 +64,17 @@ type inflightEntry struct {
 
 const inflightTTL = 5 * time.Minute
 const busyNoticeInterval = 15 * time.Second
+const slowProcessingNoticeDelay = 1500 * time.Millisecond
 const busyMessage = "Ainda estou processando sua resposta anterior. Aguarde eu enviar a próxima mensagem antes de digitar outra opção."
+
+const mediaCaptureFailureMessage = "Nao consegui ler esse anexo por aqui. Pode reenviar a imagem ou documento? Se preferir, mande tambem uma descricao curta."
+
+var slowProcessingMessages = []string{
+	"Entendi. So um instante enquanto organizo isso para voce.",
+	"Perfeito, estou analisando aqui. Um momento.",
+	"Certo, ja estou verificando. Ja te respondo.",
+	"Ok, aguarde so mais um instante enquanto eu processo sua solicitacao.",
+}
 
 func normalizePhone(value string) string {
 	digits := digitsOnly.ReplaceAllString(value, "")
@@ -311,6 +324,59 @@ func finishProcessing(senderPhone string) {
 	delete(inflightBySender, senderPhone)
 }
 
+func getLastBotState(senderPhone string) string {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	return lastBotStateBySender[senderPhone]
+}
+
+func setLastBotState(senderPhone string, state string) {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	lastBotStateBySender[senderPhone] = state
+}
+
+func nextSlowProcessingMessage(senderPhone string) string {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	index := waitMessageIndexBySender[senderPhone]
+	message := slowProcessingMessages[index%len(slowProcessingMessages)]
+	waitMessageIndexBySender[senderPhone] = index + 1
+	return message
+}
+
+func isEvidenceDoneCommand(text string) bool {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "pronto", "finalizar", "concluir", "ok":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldSendSlowProcessingNotice(lastState string, text string, mediaCount int) bool {
+	trimmed := strings.TrimSpace(text)
+	switch lastState {
+	case "description_collection", "description_clarification":
+		return trimmed != ""
+	case "evidence_collection":
+		return isEvidenceDoneCommand(trimmed)
+	default:
+		return false
+	}
+}
+
+func sendDelayedProcessingNotice(ctx context.Context, target types.JID, text string) {
+	timer := time.NewTimer(slowProcessingNoticeDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-timer.C:
+		sendPlainText(context.Background(), target, text)
+	}
+}
+
 func sendPlainText(ctx context.Context, target types.JID, text string) {
 	if strings.TrimSpace(text) == "" {
 		return
@@ -359,11 +425,28 @@ func eventHandler(evt interface{}) {
 		}
 
 		mediaPayload := collectMediaPayloads(context.Background(), v.Message, v.Info.ID)
+		if hasSupportedMedia(v.Message) && len(mediaPayload) == 0 {
+			sendPlainText(context.Background(), sendTarget, mediaCaptureFailureMessage)
+			if strings.TrimSpace(text) == "" {
+				finishProcessing(senderPhone)
+				return
+			}
+		}
 
 		fmt.Printf("Nova mensagem de %s: %s\n", senderPhone, text)
 
 		go func() {
 			defer finishProcessing(senderPhone)
+			lastBotState := getLastBotState(senderPhone)
+			noticeCtx, cancelNotice := context.WithCancel(context.Background())
+			if shouldSendSlowProcessingNotice(lastBotState, text, len(mediaPayload)) {
+				go sendDelayedProcessingNotice(
+					noticeCtx,
+					sendTarget,
+					nextSlowProcessingMessage(senderPhone),
+				)
+			}
+			defer cancelNotice()
 			reqBody := BotRequest{
 				SessionID:         senderPhone,
 				Channel:           "whatsapp",
@@ -403,6 +486,9 @@ func eventHandler(evt interface{}) {
 			if err != nil {
 				fmt.Printf("Erro parse JSON resposta: %v body=%s\n", err, strings.TrimSpace(string(body)))
 				return
+			}
+			if strings.TrimSpace(botResp.State) != "" {
+				setLastBotState(senderPhone, botResp.State)
 			}
 
 			botMsg := strings.TrimSpace(botResp.BotMessage)

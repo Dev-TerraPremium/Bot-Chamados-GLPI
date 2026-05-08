@@ -197,7 +197,9 @@ class ConversationFlowController:
             
         context = self._get_or_create_context(session_id, channel, auth_resolution.user)
 
-        if self.parser.is_start_message(message):
+        normalized_media = self._normalize_media_payloads(media)
+
+        if self.parser.is_start_message(message) and not normalized_media:
             return self._result(context, self._build_main_menu(context.user))
 
         if self.parser.is_reset_command(message):
@@ -233,7 +235,6 @@ class ConversationFlowController:
             )
 
         sanitized_message = self.input_sanitizer.sanitize(message)
-        normalized_media = self._normalize_media_payloads(media)
         if normalized_media:
             context.attachments.extend(normalized_media)
             if not sanitized_message:
@@ -536,7 +537,7 @@ class ConversationFlowController:
     def _handle_category_assignment_confirmation(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4, 5})
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
         if not validation.is_valid:
             return self._result(context, validation.message)
 
@@ -587,14 +588,26 @@ class ConversationFlowController:
         if self.settings.is_glpi_real_mode:
             return self._handle_real_category_selection(context, message)
 
-        validation = self.menu_validator.require_choice(message, set(range(1, 13)))
+        validation = self.menu_validator.require_choice(message, set(range(1, 10)))
         if not validation.is_valid:
             return self._result(
                 context,
                 validation.message + "\n\n" + render_category_menu(),
             )
 
-        self._set_category(context, validation.choice or 12)
+        if validation.choice == 8:
+            self.state_machine.transition_to(context, ConversationState.OTHER_CATEGORY_TEXT)
+            return self._result(
+                context,
+                "Digite uma palavra para pesquisar as categorias do bot.",
+            )
+        if validation.choice == 9:
+            context.move_to_main_menu()
+            return self._result(context, self._build_main_menu(context.user))
+
+        mapping = {1: 1, 2: 2, 3: 4, 4: 6, 5: 3, 6: 5, 7: 12}
+        category_id = mapping.get(validation.choice, 12)
+        self._set_category(context, category_id)
         self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
         return self._result(
             context,
@@ -677,13 +690,13 @@ class ConversationFlowController:
         )
         return self._result(
             context,
-            "**Entendi que isso parece estar relacionado a:**\n\n"
-            f"{category_match.category_id}. **{category_match.category_name}**\n\n"
-            "Confirma essa categoria?\n\n"
-            "Digite no teclado o **número** da opção desejada:\n"
-            "1️⃣ **Sim**\n"
-            "2️⃣ **Não, manter como Outro**\n"
-            "3️⃣ **Escolher outra categoria**",
+            "🔎 **Resultado da Busca**\n\n"
+            "Encontrei uma correspondência para sua pesquisa:\n"
+            f"📍 **{category_match.category_name}**\n\n"
+            "Podemos usar esta categoria?\n\n"
+            "1️⃣ **Sim, confirmar**\n"
+            "2️⃣ **Não, pesquisar novamente**\n"
+            "3️⃣ **Usar categoria \"Outros\"**",
         )
 
     def _handle_other_category_confirmation(
@@ -707,16 +720,18 @@ class ConversationFlowController:
                 build_description_review_message(context.organized_description or ""),
             )
         if validation.choice == 2:
-            self._set_category(context, 12)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+            self.state_machine.transition_to(context, ConversationState.OTHER_CATEGORY_TEXT)
             return self._result(
                 context,
-                build_description_review_message(context.organized_description or ""),
+                "Digite uma palavra para pesquisar as categorias do bot.",
             )
-        self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-        if self.settings.is_glpi_real_mode:
-            return self._result(context, self._render_real_category_menu(context))
-        return self._result(context, render_category_menu())
+
+        self._set_category(context, 12)
+        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
+        return self._result(
+            context,
+            build_description_review_message(context.organized_description or ""),
+        )
 
     def _handle_description_review(
         self, context: ConversationContext, message: str
@@ -746,14 +761,16 @@ class ConversationFlowController:
     def _handle_impact(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4, 5})
+        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
         if not validation.is_valid:
             return self._result(
                 context,
                 validation.message + "\n\n" + render_impact_menu(),
             )
 
-        impact = get_impact_by_id(validation.choice or 0)
+        impact_mapping = {1: 1, 2: 2, 3: 3, 4: 5}
+        mapped_choice = impact_mapping.get(validation.choice, 1)
+        impact = get_impact_by_id(mapped_choice)
         context.impact_id = impact.id
         context.impact_label = impact.label
         context.severity = self.severity_mapping_service.map_impact_to_severity(
@@ -798,8 +815,9 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.EVIDENCE_COLLECTION)
             return self._result(
                 context,
-                "Envie a descrição complementar, prints ou arquivos que ajudem o atendimento.\n\n"
-                "Você pode enviar vários anexos. Quando terminar, digite *pronto*.",
+                "📤 **Espaço para Anexos**\n\n"
+                "Pode enviar seus arquivos agora (fotos, vídeos ou documentos).\n\n"
+                "Quando terminar de enviar tudo, digite a palavra **PRONTO** para finalizar.",
             )
         context.evidence = "Não informado"
         return self._prepare_final_summary(context)
@@ -814,16 +832,11 @@ class ConversationFlowController:
         if not self._is_evidence_done_command(message):
             self._append_evidence_text(context, message)
             attachment_count = len(context.attachments)
-            attachment_line = (
-                f"\n\nAnexos recebidos até agora: *{attachment_count}*."
-                if attachment_count
-                else ""
-            )
             return self._result(
                 context,
-                "Informação registrada."
-                + attachment_line
-                + "\n\nSe quiser, envie mais detalhes ou anexos. Quando terminar, digite *pronto*.",
+                "Informação registrada.\n\n"
+                f"✅ **Recebidos:** {attachment_count}\n\n"
+                "Quando terminar de enviar tudo, digite a palavra **PRONTO** para finalizar."
             )
 
         if not context.evidence and not context.attachments:
@@ -1004,7 +1017,7 @@ class ConversationFlowController:
     def _handle_complement_review(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
+        validation = self.menu_validator.require_choice(message, {1, 2, 3})
         if not validation.is_valid:
             return self._result(context, validation.message)
         if validation.choice == 1:
@@ -1021,12 +1034,6 @@ class ConversationFlowController:
                 context,
                 "✍️ Digite novamente o complemento que deseja adicionar.",
             )
-        if validation.choice == 3:
-            return self._create_followup(
-                context,
-                context.complement_original_text or "",
-            )
-
         context.move_to_main_menu()
         return self._result(
             context,
@@ -1095,8 +1102,8 @@ class ConversationFlowController:
             )
             return self._result(
                 context,
-                "⚠️ Não foi possível abrir o chamado no GLPI agora. "
-                "Tente novamente em instantes.",
+                "⚠️ **Não consegui abrir o chamado no GLPI agora.**\n\n"
+                "Seus dados continuam preenchidos nesta etapa, então você pode tentar novamente em instantes sem reescrever tudo.",
             )
 
         created_ticket_data = created_ticket.to_dict()
@@ -1636,35 +1643,34 @@ class ConversationFlowController:
         return f"{context.session_id}:{digest}"
 
     def _render_created_ticket_message(self, created_ticket: dict) -> str:
-        has_attachment_errors = bool(created_ticket.get("attachment_errors"))
-        if has_attachment_errors and self.settings.is_glpi_real_mode:
-            title = "⚠️ **Chamado criado no GLPI, mas há anexo pendente.**"
+        category = created_ticket.get("category") or created_ticket.get("category_name") or "Suporte TI"
+        expected_attachments = int(created_ticket.get("attachments_expected_count") or 0)
+        uploaded_attachments = int(created_ticket.get("attachments_uploaded_count") or 0)
+        attachment_errors = [str(item) for item in created_ticket.get("attachment_errors") or []]
+        if expected_attachments:
+            attachment_line = f"\n📎 **Anexos vinculados:** {uploaded_attachments}/{expected_attachments}"
         else:
-            title = (
-                "✅ **Chamado criado com sucesso no GLPI.**"
-                if self.settings.is_glpi_real_mode
-                else "✅ **Chamado simulado criado com sucesso.**"
+            attachment_line = ""
+        if attachment_errors:
+            failed_names = ", ".join(attachment_errors)
+            attachment_feedback = (
+                f"{attachment_line}\n"
+                "⚠️ **Alguns anexos não entraram no GLPI desta vez.**\n"
+                f"Arquivos pendentes: {failed_names}\n"
+                "O chamado foi aberto normalmente e já registrei esse alerta para acompanhamento."
             )
-        number_label = "Número GLPI" if self.settings.is_glpi_real_mode else "Número simulado"
-        attachment_line = ""
-        expected = int(created_ticket.get("attachments_expected_count") or 0)
-        uploaded = int(created_ticket.get("attachments_uploaded_count") or 0)
-        if expected and not has_attachment_errors:
-            attachment_line = f"\n📎 **Anexos vinculados:** {uploaded}/{expected}"
-        elif has_attachment_errors:
-            failed = ", ".join(created_ticket.get("attachment_errors") or [])
-            attachment_line = (
-                f"\n📎 **Anexos vinculados:** {uploaded}/{expected}"
-                f"\n⚠️ **Anexos pendentes:** {failed}"
-            )
+        else:
+            attachment_feedback = attachment_line
         return (
-            f"{title}\n\n"
-            f"🔢 **{number_label}:** {created_ticket['ticket_number']}\n"
-            f"🏷️ **Título:** {created_ticket['title']}\n"
-            f"📌 **Status:** {created_ticket['status']}\n"
-            f"🚦 **Gravidade:** {created_ticket['severity']}\n"
-            f"📝 **Descrição organizada:** {created_ticket['description']}"
-            f"{attachment_line}"
+            "🎉 **Chamado Aberto com Sucesso!**\n\n"
+            "Sua solicitação já está com nossa equipe técnica.\n\n"
+            f"🆔 **Ticket:** #{created_ticket['ticket_number']}\n"
+            f"📂 **Categoria:** {category}\n"
+            f"🚦 **Prioridade:** {created_ticket['severity']}\n"
+            f"{attachment_feedback}\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "⏳ **Próximo passo:** Um técnico analisará seu caso e você receberá atualizações por aqui.\n\n"
+            "Envie qualquer mensagem para voltar ao menu principal."
         )
 
     def _result(

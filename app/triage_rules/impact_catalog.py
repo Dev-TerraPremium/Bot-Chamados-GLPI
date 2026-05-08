@@ -21,15 +21,15 @@ def get_impact_by_id(impact_id: int) -> ImpactOption | None:
 
 
 def render_impact_menu() -> str:
-    lines = [
-        "**Qual é o impacto para a operação?**",
-        "",
-        "Digite no teclado o **número** da opção desejada:",
-    ]
-    lines.extend(
-        f"{_keycap(impact.id)} **{impact.label}**" for impact in IMPACT_OPTIONS
+    return (
+        "🚦 **Nível de Impacto**\n\n"
+        "Como este problema está afetando seu trabalho agora?\n\n"
+        "1️⃣ 🟢 **Baixo:** Apenas uma dúvida ou pedido simples.\n"
+        "2️⃣ 🟡 **Médio:** Consigo trabalhar, mas com dificuldades.\n"
+        "3️⃣ 🟠 **Alto:** Estou totalmente parado(a).\n"
+        "4️⃣ 🔴 **Crítico:** Afeta várias pessoas ou um setor inteiro.\n\n"
+        "Digite o número da opção:"
     )
-    return "\n".join(lines)
 
 
 def _keycap(number: int) -> str:

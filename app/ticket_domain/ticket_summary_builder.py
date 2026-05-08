@@ -3,6 +3,21 @@ from app.ticket_domain.ticket_models import TicketSummary
 
 class TicketSummaryBuilder:
     def build_summary(self, context) -> TicketSummary:
+        evidence = (context.evidence or "").strip()
+        attachment_count = len(context.attachments or [])
+        if attachment_count:
+            attachment_text = (
+                f"{attachment_count} anexo recebido."
+                if attachment_count == 1
+                else f"{attachment_count} anexos recebidos."
+            )
+            if evidence and evidence != "Não informado":
+                evidence = f"{attachment_text} {evidence}"
+            else:
+                evidence = attachment_text
+        elif not evidence:
+            evidence = "Não informado"
+
         return TicketSummary(
             requester=f"{context.user.full_name} ({context.user.login})",
             channel=context.channel,
@@ -11,25 +26,23 @@ class TicketSummaryBuilder:
             impact=context.impact_label or "",
             severity=context.severity or "",
             location=context.location or "",
-            evidence=context.evidence or "Não informado",
+            evidence=evidence,
             suggested_title=context.suggested_title or "",
         )
 
     def render_summary_message(self, summary: TicketSummary) -> str:
         return (
-            "📋 **Confirme os dados do chamado:**\n\n"
-            f"👤 **Solicitante:** {summary.requester}\n"
-            f"💬 **Canal:** {summary.channel}\n"
-            f"📚 **Categoria:** {summary.category}\n"
-            f"📝 **Descrição:** {summary.description}\n"
-            f"📊 **Impacto:** {summary.impact}\n"
-            f"🚦 **Gravidade:** {summary.severity}\n"
-            f"📍 **Localidade/Setor:** {summary.location}\n"
-            f"📎 **Evidência:** {summary.evidence}\n"
-            f"🏷️ **Título sugerido:** {summary.suggested_title}\n\n"
-            "Deseja abrir o chamado?\n\n"
-            "Digite no teclado o **número** da opção desejada:\n"
-            "1️⃣ **Sim, abrir chamado**\n"
-            "2️⃣ **Corrigir informações**\n"
-            "3️⃣ **Cancelar**"
+            "🏁 **Revisão Final**\n\n"
+            "Tudo pronto! Confira os dados antes de gerarmos o ticket:\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"📂 **Categoria:** {summary.category}\n"
+            f"📝 **Resumo:** {summary.description}\n"
+            f"🚦 **Impacto:** {summary.impact}\n"
+            f"📍 **Local:** {summary.location}\n"
+            f"📎 **Anexos:** {summary.evidence}\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "Podemos abrir o chamado?\n\n"
+            "1️⃣ **Sim, confirmar abertura**\n"
+            "2️⃣ **Preciso corrigir algo**\n"
+            "3️⃣ **Desistir e cancelar**"
         )

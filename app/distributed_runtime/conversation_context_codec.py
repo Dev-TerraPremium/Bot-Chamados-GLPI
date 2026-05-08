@@ -14,6 +14,8 @@ class ConversationContextCodec:
             "user": context.user.to_safe_dict(),
             "state": context.state.value,
             "opening_mode": context.opening_mode,
+            "ticket_type": context.ticket_type,
+            "attachments": context.attachments,
             "selected_category_id": context.selected_category_id,
             "selected_category_name": context.selected_category_name,
             "selected_glpi_category_id": context.selected_glpi_category_id,
@@ -55,6 +57,16 @@ class ConversationContextCodec:
             ),
             state=ConversationState(str(data["state"])),
             opening_mode=data.get("opening_mode"),
+            ticket_type=int(data.get("ticket_type") or 1),
+            attachments=[
+                {
+                    "file_name": str(item.get("file_name", "")),
+                    "mime_type": str(item.get("mime_type", "application/octet-stream")),
+                    "data_base64": str(item.get("data_base64", "")),
+                }
+                for item in data.get("attachments", [])
+                if isinstance(item, dict)
+            ],
             selected_category_id=data.get("selected_category_id"),
             selected_category_name=data.get("selected_category_name"),
             selected_glpi_category_id=data.get("selected_glpi_category_id"),

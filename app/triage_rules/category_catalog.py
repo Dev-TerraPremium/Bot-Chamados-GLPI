@@ -126,13 +126,19 @@ def get_category_by_name(category_name: str) -> CategoryOption | None:
 
 
 def render_category_menu() -> str:
-    lines = [
-        "**Escolha a categoria manualmente:**",
-        "",
-        "Digite no teclado o **número** da opção desejada:",
-    ]
-    lines.extend(f"{_keycap(category.id)} **{category.name}**" for category in CATEGORY_OPTIONS)
-    return "\n".join(lines)
+    return (
+        "📚 **Catálogo de Serviços**\n\n"
+        "Selecione a categoria que melhor descreve sua necessidade:\n"
+        "1️⃣ **Internet e Conectividade**\n"
+        "2️⃣ **Computador ou Notebook**\n"
+        "3️⃣ **Sistemas e ERP**\n"
+        "4️⃣ **Acessos e Senhas**\n"
+        "5️⃣ **Impressoras e Periféricos**\n"
+        "6️⃣ **E-mail e Microsoft 365**\n"
+        "7️⃣ **Outros Assuntos**\n"
+        "8️⃣ **🔍 Pesquisar por nome**\n"
+        "9️⃣ **⬅️ Voltar**"
+    )
 
 
 def render_description_prompt(category: CategoryOption) -> str:

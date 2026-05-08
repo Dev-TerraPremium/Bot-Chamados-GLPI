@@ -120,7 +120,7 @@ def test_guided_flow_asks_one_question_and_then_suggests_category() -> None:
     )
 
     assert clarification.state == "description_clarification"
-    assert "Pergunta 1 de até 1" in clarification.bot_message
+    assert "Passo 1 de 1" in clarification.bot_message
     assert category.state == "category_assignment_confirmation"
     assert "Computador / Notebook" in category.bot_message
     assert len(detailer.calls) == 1

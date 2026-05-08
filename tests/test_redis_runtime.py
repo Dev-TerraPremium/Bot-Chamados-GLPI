@@ -22,6 +22,14 @@ def test_redis_conversation_store_round_trips_context() -> None:
             glpi_user_id=266,
         ),
     )
+    context.ticket_type = 2
+    context.attachments.append(
+        {
+            "file_name": "print.png",
+            "mime_type": "image/png",
+            "data_base64": "ZmFrZQ==",
+        }
+    )
     context.selected_category_id = 11
     context.selected_category_name = "Ubiquiti / Wi-Fi"
     context.description_clarification_question = "Qual erro aparece?"
@@ -38,6 +46,14 @@ def test_redis_conversation_store_round_trips_context() -> None:
     assert loaded is not None
     assert loaded.selected_category_name == "Ubiquiti / Wi-Fi"
     assert loaded.user.glpi_user_id == 266
+    assert loaded.ticket_type == 2
+    assert loaded.attachments == [
+        {
+            "file_name": "print.png",
+            "mime_type": "image/png",
+            "data_base64": "ZmFrZQ==",
+        }
+    ]
     assert loaded.description_clarification_question == "Qual erro aparece?"
     assert loaded.description_clarification_turns == [
         {

@@ -99,6 +99,30 @@ class FakeRealGLPIClient:
         )
 
 
+class FakeRealGLPIClientWithAttachmentFailure(FakeRealGLPIClient):
+    def create_ticket(self, ticket_data: dict) -> TicketCreated:
+        self.payload = ticket_data
+        return TicketCreated(
+            ticket_number=1234,
+            title=ticket_data["title"],
+            status="Aberto",
+            severity=ticket_data["severity"],
+            description=ticket_data["description"],
+            category_name=ticket_data["category_name"],
+            requester_login=ticket_data["requester_login"],
+            glpi_user_id=ticket_data["glpi_user_id"],
+            channel=ticket_data["channel"],
+            location=ticket_data["location"],
+            impact_label=ticket_data["impact_label"],
+            evidence=ticket_data["evidence"],
+            opening_mode=ticket_data["opening_mode"],
+            created_at="2026-05-07T00:00:00Z",
+            attachments_expected_count=len(ticket_data.get("attachments") or []),
+            attachments_uploaded_count=0,
+            attachment_errors=["erro.png"],
+        )
+
+
 def send(
     controller: ConversationFlowController,
     session_id: str,
@@ -128,7 +152,7 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
 
     send(controller, session_id, "__start__")
     open_prompt = send(controller, session_id, "1")
-    assert "abrir seu chamado" in open_prompt["bot_message"]
+    assert "Relato da Solicitação" in open_prompt["bot_message"]
 
     category_response = send(controller, session_id, "wifi caindo no deposito")
     assert category_response["state"] == "category_assignment_confirmation"
@@ -142,7 +166,7 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
     assert summary_response["ticket_preview"]["category"] == "Ubiquiti / Wi-Fi"
 
     created_response = send(controller, session_id, "1")
-    assert "Chamado simulado criado com sucesso" in created_response["bot_message"]
+    assert "Chamado Aberto com Sucesso!" in created_response["bot_message"]
     assert created_response["created_ticket"]["status"] == "Aberto"
     assert created_response["created_ticket"]["category_name"] == "Ubiquiti / Wi-Fi"
 
@@ -160,9 +184,9 @@ def test_open_ticket_flow_allows_manual_category_assignment() -> None:
     send(controller, session_id, "1")
     send(controller, session_id, "Estou com meu acesso a pasta RH bloqueado")
     manual_response = send(controller, session_id, "2")
-    assert "Escolha a categoria manualmente" in manual_response["bot_message"]
+    assert "Catálogo de Serviços" in manual_response["bot_message"]
 
-    review_response = send(controller, session_id, "6")
+    review_response = send(controller, session_id, "4")
     assert "acesso à pasta RH bloqueado" in review_response["bot_message"]
 
     send(controller, session_id, "1")
@@ -243,7 +267,7 @@ def test_open_ticket_flow_uses_celery_glpi_client_in_mock_mode(monkeypatch) -> N
     created_response = send(controller, session_id, "1")
 
     assert created_response["created_ticket"]["ticket_number"] == 10001
-    assert "Chamado simulado criado com sucesso" in created_response["bot_message"]
+    assert "Chamado Aberto com Sucesso!" in created_response["bot_message"]
 
 
 def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() -> None:
@@ -321,7 +345,7 @@ def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment
     send(controller, session_id, "2")
     send(controller, session_id, "TI")
     evidence_prompt = send(controller, session_id, "1")
-    assert "vários anexos" in evidence_prompt["bot_message"]
+    assert "Espaço para Anexos" in evidence_prompt["bot_message"]
 
     evidence_response = send(
         controller,
@@ -350,3 +374,112 @@ def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment
             "data_base64": "ZmFrZQ==",
         }
     ]
+
+
+def test_real_open_ticket_flow_keeps_evidence_state_for_media_only_message() -> None:
+    session_id = str(uuid4())
+    glpi_client = FakeRealGLPIClient()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Evidência registrada."),
+        glpi_client=glpi_client,
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = FakeUsageTracker()
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "wifi caindo no deposito")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    send(controller, session_id, "TI")
+    send(controller, session_id, "1")
+
+    evidence_response = send(
+        controller,
+        session_id,
+        "",
+        media=[
+            {
+                "file_name": "erro.png",
+                "mime_type": "image/png",
+                "data_base64": "ZmFrZQ==",
+            }
+        ],
+    )
+    assert evidence_response["state"] == "evidence_collection"
+    assert "Informação registrada" in evidence_response["bot_message"]
+    assert "Abrir chamado" not in evidence_response["bot_message"]
+
+    summary_response = send(controller, session_id, "pronto")
+    assert summary_response["state"] == "final_confirmation"
+
+    created_response = send(controller, session_id, "1")
+    assert created_response["created_ticket"]["attachments_expected_count"] == 1
+    assert created_response["created_ticket"]["attachments_uploaded_count"] == 1
+    assert glpi_client.payload["evidence"] == "Anexos enviados pelo WhatsApp."
+
+
+def test_real_open_ticket_flow_informs_when_glpi_attachment_link_fails() -> None:
+    session_id = str(uuid4())
+    glpi_client = FakeRealGLPIClientWithAttachmentFailure()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Evidência registrada."),
+        glpi_client=glpi_client,
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = FakeUsageTracker()
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "wifi caindo no deposito")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    send(controller, session_id, "TI")
+    send(controller, session_id, "1")
+    send(
+        controller,
+        session_id,
+        "",
+        media=[
+            {
+                "file_name": "erro.png",
+                "mime_type": "image/png",
+                "data_base64": "ZmFrZQ==",
+            }
+        ],
+    )
+    send(controller, session_id, "pronto")
+
+    created_response = send(controller, session_id, "1")
+    assert "Alguns anexos não entraram no GLPI desta vez" in created_response["bot_message"]
+    assert "erro.png" in created_response["bot_message"]

@@ -44,7 +44,7 @@ def test_link_success_flow(linking_service):
     res = linking_service.resolve_or_handle("whatsapp", "66999990980", "Oi")
     assert not res.is_linked
     assert res.requires_user_action
-    assert "identifiquei o telefone final" in res.bot_message.lower()
+    assert "identifiquei o telefone com final" in res.bot_message.lower()
 
     # User sends CPF
     res2 = linking_service.resolve_or_handle("whatsapp", "66999990980", "0991")

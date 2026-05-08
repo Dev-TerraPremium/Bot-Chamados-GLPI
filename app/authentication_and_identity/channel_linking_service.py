@@ -106,7 +106,12 @@ class ChannelLinkingService:
             is_linked=False,
             user=None,
             requires_user_action=True,
-            bot_message=f"🔒 Para sua segurança, preciso vincular este canal ao seu usuário GLPI.\n\nIdentifiquei o telefone final **{normalized_id[-4:]}**.\n\nInforme os **{self.prefix_length} primeiros dígitos** do seu CPF."
+            bot_message=(
+                "🔐 **Segurança e Identificação**\n\n"
+                "Olá! Para começarmos, preciso vincular este número de WhatsApp ao seu perfil no sistema de chamados.\n\n"
+                f"Identifiquei o telefone com final **{normalized_id[-4:]}**.\n\n"
+                f"Por favor, digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+            )
         )
 
     def _handle_pending_cpf(self, link: ChannelIdentityLink, message: str, masked_id: str) -> ChannelAuthResolution:

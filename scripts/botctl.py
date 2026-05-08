@@ -383,6 +383,43 @@ def menu_delete_link() -> None:
     redis_cmd(argparse.Namespace(redis_action="delete-link", phone=number))
 
 
+def show_help(_: argparse.Namespace | None = None) -> None:
+    print(c("\n--- GUIA RAPIDO DE COMANDOS - botctl ---\n", "bold"))
+    print("O `botctl` e o painel de controle do Bot de Chamados no Proxmox.\n")
+    
+    print(c("Diagnostico e Status:", "cyan"))
+    print("  botctl status                      Mostra containers, health endpoints e configuracao atual.")
+    print("  botctl doctor                      Executa um diagnostico rapido da infraestrutura.")
+    print("  botctl menu                        Abre o menu interativo amigavel.")
+    print()
+    print(c("Controle da Stack Docker:", "cyan"))
+    print("  botctl up [--build] [servicos]     Sobe os containers (ex: botctl up --build web).")
+    print("  botctl down [--volumes]            Para todos os containers e limpa volumes se solicitado.")
+    print("  botctl restart [servicos]          Reinicia servicos (ex: botctl restart whatsapp).")
+    print()
+    print(c("Logs e Pareamento:", "cyan"))
+    print("  botctl logs [servico] [-f]         Mostra logs em tempo real (ex: botctl logs web -f).")
+    print("  botctl qr                          Segue logs do WhatsApp para exibir o QR Code ativo.")
+    print()
+    print(c("Configuracoes e Variaveis (.env):", "cyan"))
+    print("  botctl env show                    Lista todas as variaveis de ambiente ativas.")
+    print("  botctl env get [CHAVE]             Exibe o valor de uma chave especifica.")
+    print("  botctl env set [CHAVE] [VALOR]     Define o valor de uma chave no .env.docker.")
+    print()
+    print(c("Controle de Acesso (Allowlist):", "cyan"))
+    print("  botctl allowlist show              Mostra numeros permitidos e status do bloqueio.")
+    print("  botctl allowlist add [FONE]        Adiciona um numero a lista de permitidos.")
+    print("  botctl allowlist remove [FONE]     Remove um numero da lista de permitidos.")
+    print("  botctl allowlist all-on / all-off  Ativa ou desativa o acesso publico irrestrito.")
+    print()
+    print(c("Persistencia de Vinculos (Redis):", "cyan"))
+    print("  botctl redis keys                  Lista todas as chaves de vinculos de sessao.")
+    print("  botctl redis show-link [FONE]      Mostra dados de login e CPF vinculados ao telefone.")
+    print("  botctl redis delete-link [FONE]    Remove o vinculo e forca nova autenticacao via CPF.")
+    print("  botctl redis flush                 Apaga todos os vinculos, estados e filas do Redis.\n")
+    print("Para ajuda do proprio interpretador, digite: " + c("botctl --help", "yellow") + "\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="botctl",
@@ -393,6 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="Mostra containers, health e configuracao.").set_defaults(func=status)
     sub.add_parser("doctor", help="Diagnostico completo.").set_defaults(func=doctor)
     sub.add_parser("menu", help="Abre menu interativo.").set_defaults(func=interactive)
+    sub.add_parser("help", help="Mostra o guia rápido de comandos.").set_defaults(func=show_help)
 
     p_up = sub.add_parser("up", help="Sobe a stack.")
     p_up.add_argument("--build", action="store_true", help="Rebuild das imagens.")
