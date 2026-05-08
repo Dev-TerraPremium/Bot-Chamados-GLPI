@@ -4,6 +4,9 @@ from app.local_light_ai.generative_description_organizer import (
     GenerativeDescriptionOrganizer,
     GoogleAILocalGenerativeClient,
 )
+from app.local_light_ai.description_organization_models import (
+    LocalGenerativeAIUnavailableError,
+)
 
 
 class FakeGenerativeClient:
@@ -380,3 +383,34 @@ def test_google_client_retries_transient_503(monkeypatch) -> None:
 
     assert calls["count"] == 2
     assert payload["status"] == "organized"
+
+
+def test_google_client_does_not_retry_timeout(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def fake_post(*args, **kwargs):
+        calls["count"] += 1
+        raise httpx.TimeoutException("slow")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = GoogleAILocalGenerativeClient(
+        base_url="https://example.test",
+        model="gemini-test",
+        api_key="token",
+        timeout_seconds=5,
+        max_retries=1,
+    )
+
+    try:
+        client.generate_json(
+            system_prompt="sys",
+            user_prompt="user",
+            options={"num_predict": 120},
+        )
+    except LocalGenerativeAIUnavailableError:
+        pass
+    else:
+        raise AssertionError("Expected Google timeout to fail fast")
+
+    assert calls["count"] == 1

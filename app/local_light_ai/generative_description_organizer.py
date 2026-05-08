@@ -275,6 +275,24 @@ class GoogleAILocalGenerativeClient:
                     raise LocalGenerativeAIUnavailableError(
                         "Nao foi possivel acionar a IA generativa Google."
                     ) from exc
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                logger.warning(
+                    "google_ai_request_attempt_failed",
+                    extra={
+                        "model": self.model,
+                        "purpose": purpose,
+                        "google_attempt": attempt + 1,
+                        "google_attempts": attempt + 1,
+                        "google_duration_ms": int(
+                            (time.perf_counter() - attempt_started_at) * 1000
+                        ),
+                        "status_code": status_code,
+                    },
+                )
+                raise LocalGenerativeAIUnavailableError(
+                    "Nao foi possivel acionar a IA generativa Google."
+                ) from exc
             except httpx.HTTPError as exc:
                 last_error = exc
                 logger.warning(
@@ -290,10 +308,9 @@ class GoogleAILocalGenerativeClient:
                         "status_code": status_code,
                     },
                 )
-                if attempt >= self.max_retries:
-                    raise LocalGenerativeAIUnavailableError(
-                        "Nao foi possivel acionar a IA generativa Google."
-                    ) from exc
+                raise LocalGenerativeAIUnavailableError(
+                    "Nao foi possivel acionar a IA generativa Google."
+                ) from exc
 
         if response is None:
             raise LocalGenerativeAIUnavailableError(

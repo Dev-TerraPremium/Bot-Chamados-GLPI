@@ -53,6 +53,30 @@ class FakeCatalog:
         return [self.category]
 
 
+class ERPFakeCatalog(FakeCatalog):
+    def __init__(self) -> None:
+        super().__init__()
+        self.erp_category = GLPICategoryOption(
+            id=622,
+            name="Apontamento de Erros",
+            complete_name="SISTEMAS > SOLUTION > SUPORTE > Apontamento de Erros",
+            entity_id=3,
+            parent_id=0,
+            level=4,
+        )
+
+    def get_categories(self, ticket_type=None):
+        return [self.category, self.erp_category]
+
+    def get_by_id(self, category_id: int):
+        if category_id == 622:
+            return self.erp_category
+        return super().get_by_id(category_id)
+
+    def search(self, query: str, *, ticket_type=None, limit: int = 5):
+        return [self.category]
+
+
 class NoSearchMatchCatalog(FakeCatalog):
     def search(self, query: str, *, ticket_type=None, limit: int = 5):
         return []
@@ -68,7 +92,7 @@ def test_disabled_ollama_mode_fails_fast() -> None:
         build_local_generative_client(settings)
 
 
-def test_glpi_category_suggester_uses_text_search_before_ai(monkeypatch) -> None:
+def test_glpi_category_suggester_uses_heuristic_before_ai(monkeypatch) -> None:
     fake_client = FakeClient({"category_id": 544})
 
     monkeypatch.setattr(
@@ -88,6 +112,29 @@ def test_glpi_category_suggester_uses_text_search_before_ai(monkeypatch) -> None
 
     assert match.category_id == 544
     assert match.category_name == "INFRAESTRUTURA > REDES > WI-FI"
+    assert match.matched_keyword == "heuristic"
+    assert not fake_client.calls
+
+
+def test_glpi_category_suggester_uses_text_search_before_ai(monkeypatch) -> None:
+    fake_client = FakeClient({"category_id": 544})
+
+    monkeypatch.setattr(
+        "app.triage_rules.glpi_category_suggestion_service.build_local_generative_client",
+        lambda settings: (fake_client, "google:gemini-3.1-flash-lite"),
+    )
+
+    service = build_glpi_category_suggestion_service(
+        AppSettings(
+            glpi_integration_mode="real",
+            local_light_ai_mode="generative_google",
+            local_ollama_enabled=False,
+        ),
+        FakeCatalog(),
+    )
+    match = service.find_best_match("problema intermitente no deposito", ticket_type=1)
+
+    assert match.category_id == 544
     assert match.matched_keyword == "text_search"
     assert not fake_client.calls
 
@@ -108,11 +155,37 @@ def test_glpi_category_suggester_uses_ai_when_text_search_has_no_match(monkeypat
         ),
         NoSearchMatchCatalog(),
     )
-    match = service.find_best_match("wifi caindo no deposito", ticket_type=1)
+    match = service.find_best_match("problema intermitente no setor", ticket_type=1)
 
     assert match.category_id == 544
     assert match.matched_keyword == "ai_inferred"
     assert fake_client.calls
+
+
+def test_glpi_category_suggester_uses_erp_heuristic_before_ai_and_text_search(monkeypatch) -> None:
+    fake_client = FakeClient({"category_id": 544})
+
+    monkeypatch.setattr(
+        "app.triage_rules.glpi_category_suggestion_service.build_local_generative_client",
+        lambda settings: (fake_client, "google:gemini-3.1-flash-lite"),
+    )
+
+    service = build_glpi_category_suggestion_service(
+        AppSettings(
+            glpi_integration_mode="real",
+            local_light_ai_mode="generative_google",
+            local_ollama_enabled=False,
+        ),
+        ERPFakeCatalog(),
+    )
+    match = service.find_best_match(
+        "Estou com problema de nota fiscal na tela 1234", ticket_type=1
+    )
+
+    assert match.category_id == 622
+    assert "SOLUTION" in match.category_name
+    assert match.matched_keyword == "heuristic"
+    assert not fake_client.calls
 
 
 def test_title_generator_builder_uses_shared_ai_builder(monkeypatch) -> None:

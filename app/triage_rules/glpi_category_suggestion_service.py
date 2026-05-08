@@ -1,9 +1,14 @@
 import json
+import re
+import unicodedata
 
 from app.application_config.settings import AppSettings
 from app.glpi_integration_reserved.glpi_category_catalog_service import (
     GLPICategoryCatalogServiceInterface,
     GLPICategoryOption,
+)
+from app.glpi_integration_reserved.glpi_category_mapping_service import (
+    DEFAULT_GLPI_CATEGORY_IDS,
 )
 from app.local_light_ai.generative_description_organizer import (
     LocalGenerativeClient,
@@ -34,6 +39,10 @@ class GLPICategorySuggestionService:
             return CategoryMatch(0, "Categoria GLPI indisponivel", 0.0, "")
 
         category_by_id = {category.id: category for category in categories}
+        heuristic_match = self._heuristic_match(text, category_by_id)
+        if heuristic_match is not None:
+            return heuristic_match
+
         matches = self.catalog.search(text, ticket_type=ticket_type, limit=1)
         if matches:
             return self._match(matches[0], confidence=0.72, source="text_search")
@@ -72,6 +81,58 @@ class GLPICategorySuggestionService:
             payload = json.loads(payload)
         return int(payload.get("category_id") or 0)
 
+    def _heuristic_match(
+        self,
+        text: str,
+        category_by_id: dict[int, GLPICategoryOption],
+    ) -> CategoryMatch | None:
+        normalized = self._normalize(text)
+        rules: tuple[tuple[int, tuple[str, ...]], ...] = (
+            (
+                DEFAULT_GLPI_CATEGORY_IDS[4],
+                (
+                    "nota",
+                    "nota fiscal",
+                    "nf e",
+                    "nfe",
+                    "nfse",
+                    "fiscal",
+                    "solution",
+                    "erp",
+                    "apontamento",
+                ),
+            ),
+            (DEFAULT_GLPI_CATEGORY_IDS[11], ("wifi", "wi fi", "ubiquiti", "access point")),
+            (
+                DEFAULT_GLPI_CATEGORY_IDS[3],
+                ("impressora", "imprimir", "impressao", "toner"),
+            ),
+            (
+                DEFAULT_GLPI_CATEGORY_IDS[5],
+                ("email", "e mail", "outlook", "microsoft 365", "office 365"),
+            ),
+            (
+                DEFAULT_GLPI_CATEGORY_IDS[6],
+                ("senha", "bloqueado", "bloqueada", "mfa", "permissao"),
+            ),
+            (
+                DEFAULT_GLPI_CATEGORY_IDS[1],
+                ("internet", "sem rede", "vpn", "cabo de rede"),
+            ),
+            (
+                DEFAULT_GLPI_CATEGORY_IDS[2],
+                ("computador", "notebook", "desktop", "tela azul", "nao liga"),
+            ),
+        )
+        for category_id, keywords in rules:
+            category = category_by_id.get(category_id)
+            if category is None:
+                continue
+            for keyword in keywords:
+                if keyword in normalized:
+                    return self._match(category, confidence=0.86, source="heuristic")
+        return None
+
     @staticmethod
     def _match(
         category: GLPICategoryOption,
@@ -94,6 +155,15 @@ class GLPICategorySuggestionService:
             (category for category in categories if category.id == 659),
             categories[0],
         )
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text.casefold())
+        normalized = "".join(
+            char for char in normalized if not unicodedata.combining(char)
+        )
+        normalized = re.sub(r"[^\w\s]", " ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
 
 
 def build_glpi_category_suggestion_service(
