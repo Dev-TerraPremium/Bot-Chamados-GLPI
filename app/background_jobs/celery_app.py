@@ -1,5 +1,7 @@
 from celery import Celery
+from celery.signals import after_setup_logger, after_setup_task_logger
 
+from app.application_config.logging_config import StructuredLogFormatter
 from app.application_config.settings import load_settings
 
 
@@ -47,3 +49,13 @@ celery_app.conf.update(
         },
     },
 )
+
+
+def _install_structured_formatter(logger, **_kwargs) -> None:
+    formatter = StructuredLogFormatter()
+    for handler in logger.handlers:
+        handler.setFormatter(formatter)
+
+
+after_setup_logger.connect(_install_structured_formatter)
+after_setup_task_logger.connect(_install_structured_formatter)
