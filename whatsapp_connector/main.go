@@ -51,20 +51,21 @@ type BotResponse struct {
 var client *whatsmeow.Client
 var connectorStartedAt = time.Now()
 var digitsOnly = regexp.MustCompile(`\D+`)
-var inflightMu sync.Mutex
-var inflightBySender = map[string]inflightEntry{}
+var whatsappBoldRegex = regexp.MustCompile(`\*\*(.+?)\*\*`)
 var stateMu sync.Mutex
 var lastBotStateBySender = map[string]string{}
 var waitMessageIndexBySender = map[string]int{}
+var workerMu sync.Mutex
+var senderWorkers = map[string]chan inboundMessage{}
 
-type inflightEntry struct {
-	startedAt    time.Time
-	lastNoticeAt time.Time
+type inboundMessage struct {
+	text         string
+	mediaPayload []AttachmentPayload
+	sendTarget   types.JID
 }
 
-const inflightTTL = 5 * time.Minute
-const busyNoticeInterval = 15 * time.Second
 const slowProcessingNoticeDelay = 1500 * time.Millisecond
+const workerQueueSize = 20
 const busyMessage = "Ainda estou processando sua resposta anterior. Aguarde eu enviar a próxima mensagem antes de digitar outra opção."
 
 const mediaCaptureFailureMessage = "Nao consegui ler esse anexo por aqui. Pode reenviar a imagem ou documento? Se preferir, mande tambem uma descricao curta."
@@ -293,41 +294,42 @@ func collectMediaPayloads(ctx context.Context, message *waE2E.Message, messageID
 	return payloads
 }
 
-func tryStartProcessing(senderPhone string) (bool, bool) {
-	now := time.Now()
-	inflightMu.Lock()
-	defer inflightMu.Unlock()
-
-	for sender, entry := range inflightBySender {
-		if now.Sub(entry.startedAt) > inflightTTL {
-			delete(inflightBySender, sender)
-		}
+func enqueueInboundMessage(senderPhone string, message inboundMessage) bool {
+	workerMu.Lock()
+	queue, exists := senderWorkers[senderPhone]
+	if !exists {
+		queue = make(chan inboundMessage, workerQueueSize)
+		senderWorkers[senderPhone] = queue
+		go processInboundQueue(senderPhone, queue)
 	}
+	workerMu.Unlock()
 
-	entry, exists := inflightBySender[senderPhone]
-	if exists {
-		shouldNotify := entry.lastNoticeAt.IsZero() || now.Sub(entry.lastNoticeAt) >= busyNoticeInterval
-		if shouldNotify {
-			entry.lastNoticeAt = now
-			inflightBySender[senderPhone] = entry
-		}
-		return false, shouldNotify
+	select {
+	case queue <- message:
+		return true
+	default:
+		return false
 	}
-
-	inflightBySender[senderPhone] = inflightEntry{startedAt: now}
-	return true, false
 }
 
-func finishProcessing(senderPhone string) {
-	inflightMu.Lock()
-	defer inflightMu.Unlock()
-	delete(inflightBySender, senderPhone)
+func processInboundQueue(senderPhone string, queue <-chan inboundMessage) {
+	for message := range queue {
+		processInboundMessage(senderPhone, message)
+	}
 }
 
 func getLastBotState(senderPhone string) string {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	return lastBotStateBySender[senderPhone]
+}
+
+func getBusyQueueMessage() string {
+	return "😵 Recebi várias mensagens muito rápido por aqui. Me dá só um instante e tente novamente em seguida."
+}
+
+func getMediaCaptureFailureMessage() string {
+	return "📎 Não consegui ler esse anexo por aqui. Pode reenviar a imagem ou documento? Se preferir, mande também uma descrição curtinha."
 }
 
 func setLastBotState(senderPhone string, state string) {
@@ -339,8 +341,14 @@ func setLastBotState(senderPhone string, state string) {
 func nextSlowProcessingMessage(senderPhone string) string {
 	stateMu.Lock()
 	defer stateMu.Unlock()
+	messages := []string{
+		"🙂 Entendi! Só um instantinho enquanto organizo isso para você.",
+		"🫡 Perfeito, já estou verificando. Já te respondo.",
+		"😉 Certo! Estou analisando aqui rapidinho.",
+		"⏳ Beleza, só um momento enquanto eu processo sua solicitação.",
+	}
 	index := waitMessageIndexBySender[senderPhone]
-	message := slowProcessingMessages[index%len(slowProcessingMessages)]
+	message := messages[index%len(messages)]
 	waitMessageIndexBySender[senderPhone] = index + 1
 	return message
 }
@@ -377,15 +385,84 @@ func sendDelayedProcessingNotice(ctx context.Context, target types.JID, text str
 	}
 }
 
+func normalizeWhatsAppText(text string) string {
+	normalized := strings.TrimSpace(text)
+	normalized = whatsappBoldRegex.ReplaceAllString(normalized, `*$1*`)
+	return normalized
+}
+
 func sendPlainText(ctx context.Context, target types.JID, text string) {
-	if strings.TrimSpace(text) == "" {
+	normalized := normalizeWhatsAppText(text)
+	if normalized == "" {
 		return
 	}
 	_, err := client.SendMessage(ctx, target, &waE2E.Message{
-		Conversation: proto.String(text),
+		Conversation: proto.String(normalized),
 	})
 	if err != nil {
 		fmt.Println("Erro ao enviar mensagem no WhatsApp:", err)
+	}
+}
+
+func processInboundMessage(senderPhone string, inbound inboundMessage) {
+	lastBotState := getLastBotState(senderPhone)
+	noticeCtx, cancelNotice := context.WithCancel(context.Background())
+	if shouldSendSlowProcessingNotice(lastBotState, inbound.text, len(inbound.mediaPayload)) {
+		go sendDelayedProcessingNotice(
+			noticeCtx,
+			inbound.sendTarget,
+			nextSlowProcessingMessage(senderPhone),
+		)
+	}
+	defer cancelNotice()
+
+	reqBody := BotRequest{
+		SessionID:         senderPhone,
+		Channel:           "whatsapp",
+		Message:           inbound.text,
+		ChannelIdentifier: senderPhone,
+		Media:             inbound.mediaPayload,
+	}
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		fmt.Println("Erro marshal JSON:", err)
+		return
+	}
+
+	apiURL := os.Getenv("BOT_API_URL")
+	if apiURL == "" {
+		apiURL = "http://127.0.0.1:8000/api/conversation/message"
+	}
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Println("Erro requisicao FastAPI:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Erro lendo resposta:", err)
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		fmt.Printf("Erro FastAPI status=%d body=%s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+		return
+	}
+
+	var botResp BotResponse
+	err = json.Unmarshal(body, &botResp)
+	if err != nil {
+		fmt.Printf("Erro parse JSON resposta: %v body=%s\n", err, strings.TrimSpace(string(body)))
+		return
+	}
+	if strings.TrimSpace(botResp.State) != "" {
+		setLastBotState(senderPhone, botResp.State)
+	}
+
+	botMsg := strings.TrimSpace(botResp.BotMessage)
+	if botMsg != "" {
+		sendPlainText(context.Background(), inbound.sendTarget, botMsg)
 	}
 }
 
@@ -416,86 +493,23 @@ func eventHandler(evt interface{}) {
 		if sendTarget.IsEmpty() {
 			sendTarget = v.Info.Sender
 		}
-		if ok, shouldNotify := tryStartProcessing(senderPhone); !ok {
-			logIgnored("processing_in_progress", v, fmt.Sprintf("phone=%s", senderPhone))
-			if shouldNotify {
-				sendPlainText(context.Background(), sendTarget, busyMessage)
-			}
-			return
-		}
 
 		mediaPayload := collectMediaPayloads(context.Background(), v.Message, v.Info.ID)
 		if hasSupportedMedia(v.Message) && len(mediaPayload) == 0 {
-			sendPlainText(context.Background(), sendTarget, mediaCaptureFailureMessage)
+			sendPlainText(context.Background(), sendTarget, getMediaCaptureFailureMessage())
 			if strings.TrimSpace(text) == "" {
-				finishProcessing(senderPhone)
 				return
 			}
 		}
 
 		fmt.Printf("Nova mensagem de %s: %s\n", senderPhone, text)
-
-		go func() {
-			defer finishProcessing(senderPhone)
-			lastBotState := getLastBotState(senderPhone)
-			noticeCtx, cancelNotice := context.WithCancel(context.Background())
-			if shouldSendSlowProcessingNotice(lastBotState, text, len(mediaPayload)) {
-				go sendDelayedProcessingNotice(
-					noticeCtx,
-					sendTarget,
-					nextSlowProcessingMessage(senderPhone),
-				)
-			}
-			defer cancelNotice()
-			reqBody := BotRequest{
-				SessionID:         senderPhone,
-				Channel:           "whatsapp",
-				Message:           text,
-				ChannelIdentifier: senderPhone,
-				Media:             mediaPayload,
-			}
-			jsonData, err := json.Marshal(reqBody)
-			if err != nil {
-				fmt.Println("Erro marshal JSON:", err)
-				return
-			}
-
-			apiURL := os.Getenv("BOT_API_URL")
-			if apiURL == "" {
-				apiURL = "http://127.0.0.1:8000/api/conversation/message"
-			}
-			resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
-			if err != nil {
-				fmt.Println("Erro requisicao FastAPI:", err)
-				return
-			}
-			defer resp.Body.Close()
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				fmt.Println("Erro lendo resposta:", err)
-				return
-			}
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				fmt.Printf("Erro FastAPI status=%d body=%s\n", resp.StatusCode, strings.TrimSpace(string(body)))
-				return
-			}
-
-			var botResp BotResponse
-			err = json.Unmarshal(body, &botResp)
-			if err != nil {
-				fmt.Printf("Erro parse JSON resposta: %v body=%s\n", err, strings.TrimSpace(string(body)))
-				return
-			}
-			if strings.TrimSpace(botResp.State) != "" {
-				setLastBotState(senderPhone, botResp.State)
-			}
-
-			botMsg := strings.TrimSpace(botResp.BotMessage)
-			if botMsg != "" {
-				sendPlainText(context.Background(), sendTarget, botMsg)
-			}
-		}()
+		if !enqueueInboundMessage(senderPhone, inboundMessage{
+			text:         text,
+			mediaPayload: mediaPayload,
+			sendTarget:   sendTarget,
+		}) {
+			sendPlainText(context.Background(), sendTarget, getBusyQueueMessage())
+		}
 	}
 }
 

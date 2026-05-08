@@ -62,3 +62,12 @@ func TestIsEvidenceDoneCommand(t *testing.T) {
 		t.Fatal("unexpected done command detection for regular evidence text")
 	}
 }
+
+func TestNormalizeWhatsAppTextConvertsDoubleAsteriskBold(t *testing.T) {
+	input := "Olá, **Pedro**!\nVocê está conectado como **pedro.torres**."
+	got := normalizeWhatsAppText(input)
+	want := "Olá, *Pedro*!\nVocê está conectado como *pedro.torres*."
+	if got != want {
+		t.Fatalf("normalizeWhatsAppText() = %q, want %q", got, want)
+	}
+}
