@@ -22,6 +22,7 @@ def _to_response(result) -> ConversationMessageResponse:
         session_id=result.session_id,
         bot_message=result.bot_message,
         state=result.state,
+        bot_messages=result.bot_messages,
         ticket_preview=result.ticket_preview,
         created_ticket=result.created_ticket,
     )

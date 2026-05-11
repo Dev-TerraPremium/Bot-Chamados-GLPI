@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api_http_routes import (
     conversation_routes,
     healthcheck_routes,
+    notification_metrics_routes,
     web_simulator_routes,
 )
 from app.application_config.logging_config import configure_logging
@@ -31,5 +32,6 @@ app.mount(
 app.include_router(web_simulator_routes.router)
 app.include_router(healthcheck_routes.router)
 app.include_router(conversation_routes.router)
+app.include_router(notification_metrics_routes.router)
 if settings.expose_debug_routes:
     app.include_router(conversation_routes.debug_router)

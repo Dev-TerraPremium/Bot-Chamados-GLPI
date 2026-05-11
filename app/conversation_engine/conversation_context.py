@@ -31,6 +31,8 @@ class ConversationContext:
     impact_label: str | None = None
     severity: str | None = None
     location: str | None = None
+    glpi_location_id: int | None = None
+    awaiting_location_retry: bool = False
     evidence: str | None = None
     suggested_title: str | None = None
     ticket_preview: dict[str, Any] | None = None
@@ -58,6 +60,8 @@ class ConversationContext:
         self.impact_label = None
         self.severity = None
         self.location = None
+        self.glpi_location_id = None
+        self.awaiting_location_retry = False
         self.evidence = None
         self.suggested_title = None
         self.ticket_preview = None
@@ -94,6 +98,7 @@ class ConversationContext:
             "impact_label": self.impact_label,
             "severity": self.severity,
             "location": self.location,
+            "glpi_location_id": self.glpi_location_id,
             "evidence_informed": bool(self.evidence and self.evidence != "Não informado"),
             "suggested_title": self.suggested_title,
             "ticket_to_complement_id": self.ticket_to_complement_id,

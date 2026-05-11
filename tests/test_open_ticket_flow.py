@@ -14,6 +14,7 @@ from app.local_light_ai.description_organization_models import (
 )
 from app.glpi_integration_reserved.glpi_category_catalog_service import GLPICategoryOption
 from app.glpi_integration_reserved.glpi_future_real_client import GLPIClientError
+from app.glpi_integration_reserved.glpi_location_catalog_service import GLPILocationOption
 from app.ticket_domain.ticket_models import TicketCreated
 
 
@@ -61,6 +62,29 @@ class FakeRealCategorySuggester:
         from app.triage_rules.category_matching_service import CategoryMatch
 
         return CategoryMatch(544, "INFRAESTRUTURA > REDES > WI-FI", 0.9, "fake")
+
+
+class FakeLocationService:
+    locations = [
+        GLPILocationOption(1, "Matriz", "Matriz", 3),
+        GLPILocationOption(91, "Rondonópolis", "Rondonópolis", 3),
+    ]
+
+    def get_locations(self):
+        return self.locations.copy()
+
+    def get_by_id(self, location_id: int):
+        return next((item for item in self.locations if item.id == location_id), None)
+
+    def search(self, query: str, *, limit: int = 5):
+        query = query.casefold()
+        matches = [
+            item for item in self.locations if query in item.display_name.casefold()
+        ]
+        return matches[:limit]
+
+    def get_user_default_location(self, user_id: int):
+        return None
 
 
 class FailingRealCatalog:
@@ -154,6 +178,7 @@ def send(
     return {
         "session_id": result.session_id,
         "bot_message": result.bot_message,
+        "bot_messages": result.bot_messages,
         "state": result.state,
         "ticket_preview": result.ticket_preview,
         "created_ticket": result.created_ticket,
@@ -172,13 +197,12 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
     assert "Relato da Solicitação" in open_prompt["bot_message"]
 
     category_response = send(controller, session_id, "wifi caindo no deposito")
-    assert category_response["state"] == "category_assignment_confirmation"
+    assert category_response["state"] == "description_review"
     assert "Ubiquiti / Wi-Fi" in category_response["bot_message"]
 
     send(controller, session_id, "1")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
-    send(controller, session_id, "TI - Matriz")
+    send(controller, session_id, "Matriz")
     summary_response = send(controller, session_id, "2")
     assert summary_response["ticket_preview"]["category"] == "Ubiquiti / Wi-Fi"
 
@@ -188,7 +212,7 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
     assert created_response["created_ticket"]["category_name"] == "Ubiquiti / Wi-Fi"
 
 
-def test_open_ticket_flow_allows_manual_category_assignment() -> None:
+def test_open_ticket_flow_review_keeps_category_autonomous() -> None:
     session_id = str(uuid4())
     controller = ConversationFlowController(
         settings=AppSettings(ai_guided_detailing_enabled=False),
@@ -199,25 +223,46 @@ def test_open_ticket_flow_allows_manual_category_assignment() -> None:
 
     send(controller, session_id, "__start__")
     send(controller, session_id, "1")
-    send(controller, session_id, "Estou com meu acesso a pasta RH bloqueado")
-    manual_response = send(controller, session_id, "2")
-    assert "Catálogo de Serviços" in manual_response["bot_message"]
+    first_review = send(controller, session_id, "Estou com meu acesso a pasta RH bloqueado")
+    assert first_review["state"] == "description_review"
+    assert "Acesso / Senha" in first_review["bot_message"]
 
-    review_response = send(controller, session_id, "4")
-    assert "acesso à pasta RH bloqueado" in review_response["bot_message"]
+    review_response = send(controller, session_id, "9")
+    assert review_response["state"] == "description_review"
 
+    reopen_prompt = send(controller, session_id, "2")
+    assert reopen_prompt["state"] == "description_collection"
+    assert "Relato da Solicitação" in reopen_prompt["bot_message"]
+
+
+def test_open_ticket_flow_uses_natural_final_summary_and_separate_cancel_messages() -> None:
+    session_id = str(uuid4())
+    controller = ConversationFlowController(
+        settings=AppSettings(ai_guided_detailing_enabled=False),
+        description_organizer=FakeDescriptionOrganizer("Wi-Fi caindo no depósito."),
+    )
+
+    send(controller, session_id, "__start__")
     send(controller, session_id, "1")
-    send(controller, session_id, "3")
-    send(controller, session_id, "RH - Rondonópolis")
+    send(controller, session_id, "wifi caindo no deposito")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    send(controller, session_id, "Matriz")
     summary_response = send(controller, session_id, "2")
 
     assert summary_response["state"] == "final_confirmation"
-    assert summary_response["ticket_preview"]["severity"] == "Alta"
-    assert summary_response["ticket_preview"]["category"] == "Acesso / Senha"
+    assert "Seu chamado será aberto na categoria" in summary_response["bot_message"]
+    assert "Posso abrir seu chamado agora?" in summary_response["bot_message"]
+    assert "na localidade **Matriz**" in summary_response["bot_message"]
+    assert "Categoria:" not in summary_response["bot_message"]
+    assert "Resumo:" not in summary_response["bot_message"]
 
-    created_response = send(controller, session_id, "1")
-    assert created_response["created_ticket"]["severity"] == "Alta"
-    assert created_response["created_ticket"]["glpi_user_id"] == 266
+    cancel_response = send(controller, session_id, "3")
+
+    assert cancel_response["state"] == "main_menu"
+    assert cancel_response["bot_message"] == "❌ **Chamado cancelado com segurança.**"
+    assert cancel_response["bot_messages"] is not None
+    assert len(cancel_response["bot_messages"]) == 2
 
 
 def test_open_ticket_flow_uses_celery_glpi_client_in_mock_mode(monkeypatch) -> None:
@@ -277,7 +322,6 @@ def test_open_ticket_flow_uses_celery_glpi_client_in_mock_mode(monkeypatch) -> N
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
     send(controller, session_id, "1")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "TI - Matriz")
     send(controller, session_id, "2")
@@ -306,6 +350,7 @@ def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() 
         ),
         description_organizer=FakeDescriptionOrganizer("Wi-Fi caindo no depósito."),
         glpi_client=glpi_client,
+        location_service=FakeLocationService(),
     )
     controller.category_catalog = FakeRealCatalog()
     controller.category_matching_service = FakeRealCategorySuggester()
@@ -315,19 +360,56 @@ def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() 
     send(controller, session_id, "1")
     send(controller, session_id, "1")
     category_response = send(controller, session_id, "wifi caindo no deposito")
+    assert category_response["state"] == "description_review"
     assert "INFRAESTRUTURA > REDES > WI-FI" in category_response["bot_message"]
 
     send(controller, session_id, "1")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
-    send(controller, session_id, "TI")
+    send(controller, session_id, "Matriz")
     send(controller, session_id, "2")
     created_response = send(controller, session_id, "1")
 
     assert created_response["created_ticket"]["ticket_number"] == 1234
     assert glpi_client.payload["glpi_input"]["itilcategories_id"] == 544
+    assert glpi_client.payload["glpi_input"]["locations_id"] == 1
     assert glpi_client.payload["glpi_input"]["_users_id_requester"] == 266
     assert usage_tracker.incremented == [544]
+
+
+def test_real_open_ticket_flow_requires_valid_glpi_location() -> None:
+    session_id = str(uuid4())
+    glpi_client = FakeRealGLPIClient()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Wi-Fi caindo no depósito."),
+        glpi_client=glpi_client,
+        location_service=FakeLocationService(),
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = FakeUsageTracker()
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "wifi caindo no deposito")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    invalid_location = send(controller, session_id, "unidade inexistente")
+
+    assert invalid_location["state"] == "location_collection"
+    assert "Não consegui localizar essa unidade no GLPI" in invalid_location["bot_message"]
 
 
 def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment() -> None:
@@ -348,6 +430,7 @@ def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment
         ),
         description_organizer=FakeDescriptionOrganizer("Evidência registrada."),
         glpi_client=glpi_client,
+        location_service=FakeLocationService(),
     )
     controller.category_catalog = FakeRealCatalog()
     controller.category_matching_service = FakeRealCategorySuggester()
@@ -358,9 +441,8 @@ def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
     send(controller, session_id, "1")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
-    send(controller, session_id, "TI")
+    send(controller, session_id, "Matriz")
     evidence_prompt = send(controller, session_id, "1")
     assert "Espaço para Anexos" in evidence_prompt["bot_message"]
 
@@ -411,6 +493,7 @@ def test_real_open_ticket_flow_keeps_evidence_state_for_media_only_message() -> 
         ),
         description_organizer=FakeDescriptionOrganizer("Evidência registrada."),
         glpi_client=glpi_client,
+        location_service=FakeLocationService(),
     )
     controller.category_catalog = FakeRealCatalog()
     controller.category_matching_service = FakeRealCategorySuggester()
@@ -421,9 +504,8 @@ def test_real_open_ticket_flow_keeps_evidence_state_for_media_only_message() -> 
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
     send(controller, session_id, "1")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
-    send(controller, session_id, "TI")
+    send(controller, session_id, "Matriz")
     send(controller, session_id, "1")
 
     evidence_response = send(
@@ -469,6 +551,7 @@ def test_real_open_ticket_flow_informs_when_glpi_attachment_link_fails() -> None
         ),
         description_organizer=FakeDescriptionOrganizer("Evidência registrada."),
         glpi_client=glpi_client,
+        location_service=FakeLocationService(),
     )
     controller.category_catalog = FakeRealCatalog()
     controller.category_matching_service = FakeRealCategorySuggester()
@@ -479,9 +562,8 @@ def test_real_open_ticket_flow_informs_when_glpi_attachment_link_fails() -> None
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
     send(controller, session_id, "1")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
-    send(controller, session_id, "TI")
+    send(controller, session_id, "Matriz")
     send(controller, session_id, "1")
     send(
         controller,

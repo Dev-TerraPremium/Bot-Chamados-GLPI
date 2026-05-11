@@ -43,9 +43,15 @@ type BotRequest struct {
 }
 
 type BotResponse struct {
-	SessionID  string `json:"session_id"`
-	BotMessage string `json:"bot_message"`
-	State      string `json:"state"`
+	SessionID   string   `json:"session_id"`
+	BotMessage  string   `json:"bot_message"`
+	BotMessages []string `json:"bot_messages"`
+	State       string   `json:"state"`
+}
+
+type OutboundMessageRequest struct {
+	Phone   string `json:"phone"`
+	Message string `json:"message"`
 }
 
 var client *whatsmeow.Client
@@ -404,15 +410,84 @@ func sendPlainText(ctx context.Context, target types.JID, text string) {
 	}
 }
 
+func outboundJIDFromPhone(phone string) types.JID {
+	digits := digitsOnly.ReplaceAllString(phone, "")
+	if digits == "" {
+		return types.JID{}
+	}
+	if !strings.HasPrefix(digits, "55") {
+		digits = "55" + digits
+	}
+	return types.NewJID(digits, types.DefaultUserServer)
+}
+
+func startOutboundServer() *http.Server {
+	addr := os.Getenv("WHATSAPP_OUTBOUND_LISTEN_ADDR")
+	if addr == "" {
+		addr = ":8081"
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/internal/send-message", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		expectedToken := os.Getenv("WHATSAPP_INTERNAL_API_TOKEN")
+		if expectedToken == "" || r.Header.Get("X-Internal-Token") != expectedToken {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		var payload OutboundMessageRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		target := outboundJIDFromPhone(payload.Phone)
+		if target.IsEmpty() || strings.TrimSpace(payload.Message) == "" {
+			http.Error(w, "phone and message are required", http.StatusBadRequest)
+			return
+		}
+		sendPlainText(r.Context(), target, payload.Message)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		fmt.Println("Servidor interno de envio WhatsApp ouvindo em", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Println("Erro no servidor interno WhatsApp:", err)
+		}
+	}()
+	return server
+}
+
 func processInboundMessage(senderPhone string, inbound inboundMessage) {
 	lastBotState := getLastBotState(senderPhone)
 	noticeCtx, cancelNotice := context.WithCancel(context.Background())
+	var noticeMu sync.Mutex
+	noticeCompleted := false
 	if shouldSendSlowProcessingNotice(lastBotState, inbound.text, len(inbound.mediaPayload)) {
-		go sendDelayedProcessingNotice(
-			noticeCtx,
-			inbound.sendTarget,
-			nextSlowProcessingMessage(senderPhone),
-		)
+		noticeText := nextSlowProcessingMessage(senderPhone)
+		go func() {
+			timer := time.NewTimer(slowProcessingNoticeDelay)
+			defer timer.Stop()
+			select {
+			case <-noticeCtx.Done():
+				return
+			case <-timer.C:
+				noticeMu.Lock()
+				defer noticeMu.Unlock()
+				if noticeCompleted {
+					return
+				}
+				sendPlainText(context.Background(), inbound.sendTarget, noticeText)
+			}
+		}()
 	}
 	defer cancelNotice()
 
@@ -460,8 +535,20 @@ func processInboundMessage(senderPhone string, inbound inboundMessage) {
 		setLastBotState(senderPhone, botResp.State)
 	}
 
-	botMsg := strings.TrimSpace(botResp.BotMessage)
-	if botMsg != "" {
+	noticeMu.Lock()
+	noticeCompleted = true
+	noticeMu.Unlock()
+	cancelNotice()
+
+	messages := botResp.BotMessages
+	if len(messages) == 0 && strings.TrimSpace(botResp.BotMessage) != "" {
+		messages = []string{botResp.BotMessage}
+	}
+	for _, msg := range messages {
+		botMsg := strings.TrimSpace(msg)
+		if botMsg == "" {
+			continue
+		}
 		sendPlainText(context.Background(), inbound.sendTarget, botMsg)
 	}
 }
@@ -562,9 +649,12 @@ func main() {
 		fmt.Println("Bot do WhatsApp conectado com sucesso.")
 	}
 
+	outboundServer := startOutboundServer()
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 
+	_ = outboundServer.Shutdown(context.Background())
 	client.Disconnect()
 }

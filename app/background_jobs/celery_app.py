@@ -47,8 +47,19 @@ celery_app.conf.update(
         "app.background_jobs.tasks.validate_glpi_mapping_task": {
             "queue": settings.glpi_queue_name
         },
+        "app.background_jobs.tasks.poll_ticket_notifications_task": {
+            "queue": settings.glpi_queue_name
+        },
     },
 )
+
+if settings.ticket_notifications_enabled:
+    celery_app.conf.beat_schedule = {
+        "poll-ticket-notifications": {
+            "task": "app.background_jobs.tasks.poll_ticket_notifications_task",
+            "schedule": settings.ticket_notification_poll_interval_seconds,
+        }
+    }
 
 
 def _install_structured_formatter(logger, **_kwargs) -> None:

@@ -167,6 +167,12 @@ class GLPIRealClient(GLPIClientInterface):
     def search(self, itemtype: str, params: dict[str, Any]) -> dict:
         return self._request("GET", f"/search/{itemtype}", params=params)
 
+    def get_item(self, itemtype: str, item_id: int) -> dict:
+        return self._request("GET", f"/{itemtype}/{item_id}")
+
+    def get_ticket_related_items(self, ticket_id: int, itemtype: str) -> dict:
+        return self._request("GET", f"/Ticket/{ticket_id}/{itemtype}")
+
     def healthcheck(self) -> dict:
         checks: dict[str, Any] = {
             "status": "ok",

@@ -10,7 +10,7 @@ class ImpactOption:
 IMPACT_OPTIONS: tuple[ImpactOption, ...] = (
     ImpactOption(1, "Dúvida ou solicitação simples"),
     ImpactOption(2, "Afeta somente você, mas ainda consegue trabalhar"),
-    ImpactOption(3, "Afeta somente você e está parado"),
+    ImpactOption(3, "Afeta somente você e você não consegue trabalhar"),
     ImpactOption(4, "Afeta várias pessoas"),
     ImpactOption(5, "Afeta setor inteiro, filial ou operação crítica"),
 )
@@ -23,11 +23,11 @@ def get_impact_by_id(impact_id: int) -> ImpactOption | None:
 def render_impact_menu() -> str:
     return (
         "🚦 **Nível de Impacto**\n\n"
-        "Como este problema está afetando seu trabalho agora?\n\n"
-        "1️⃣ 🟢 **Baixo:** Apenas uma dúvida ou pedido simples.\n"
-        "2️⃣ 🟡 **Médio:** Consigo trabalhar, mas com dificuldades.\n"
-        "3️⃣ 🟠 **Alto:** Estou totalmente parado(a).\n"
-        "4️⃣ 🔴 **Crítico:** Afeta várias pessoas ou um setor inteiro.\n\n"
+        "Como esse problema está afetando seu trabalho agora?\n\n"
+        "1️⃣ 🟢 Apenas uma dúvida ou pedido simples.\n"
+        "2️⃣ 🟡 Consigo trabalhar, mas com dificuldades.\n"
+        "3️⃣ 🟠 Não consigo trabalhar por causa disso.\n"
+        "4️⃣ 🔴 Afeta várias pessoas ou um setor inteiro.\n\n"
         "Digite o número da opção:"
     )
 

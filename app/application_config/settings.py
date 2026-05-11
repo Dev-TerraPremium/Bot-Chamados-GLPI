@@ -52,7 +52,7 @@ class AppSettings:
     google_ai_rpd_limit: int = 450
     google_ai_rate_limit_enabled: bool = True
     ai_guided_detailing_enabled: bool = True
-    ai_max_clarification_questions: int = 1
+    ai_max_clarification_questions: int = 5
     ai_generative_title_enabled: bool = False
     ai_max_input_chars: int = 1000
     ai_max_output_chars: int = 800
@@ -92,6 +92,14 @@ class AppSettings:
     channel_link_active_ttl_seconds: int = 0
     channel_link_pending_ttl_seconds: int = 900
     channel_link_audit_ttl_seconds: int = 31536000
+    ticket_notifications_enabled: bool = False
+    ticket_notification_poll_interval_seconds: int = 30
+    ticket_notification_batch_size: int = 50
+    ticket_notification_internal_numbers: str = ""
+    ticket_notification_include_private_events: bool = True
+    ticket_notification_watch_ttl_days: int = 30
+    whatsapp_outbound_base_url: str = "http://whatsapp:8081"
+    whatsapp_internal_api_token: str = ""
 
     @property
     def is_glpi_real_mode(self) -> bool:
@@ -129,6 +137,11 @@ class AppSettings:
                 raise RuntimeError("STATE_BACKEND=redis e obrigatorio em producao.")
             if not self.use_celery_workers:
                 raise RuntimeError("USE_CELERY_WORKERS=true e obrigatorio em producao.")
+        if self.ticket_notifications_enabled:
+            if not self.is_redis_state_enabled:
+                raise RuntimeError("STATE_BACKEND=redis e obrigatorio para notificacoes.")
+            if not self.whatsapp_internal_api_token:
+                raise RuntimeError("WHATSAPP_INTERNAL_API_TOKEN e obrigatorio para notificacoes.")
 
 
 def load_settings() -> AppSettings:
@@ -160,7 +173,7 @@ def load_settings() -> AppSettings:
         google_ai_rpd_limit=_get_int("GOOGLE_AI_RPD_LIMIT", 450),
         google_ai_rate_limit_enabled=_get_bool("GOOGLE_AI_RATE_LIMIT_ENABLED", True),
         ai_guided_detailing_enabled=_get_bool("AI_GUIDED_DETAILING_ENABLED", True),
-        ai_max_clarification_questions=_get_int("AI_MAX_CLARIFICATION_QUESTIONS", 1),
+        ai_max_clarification_questions=_get_int("AI_MAX_CLARIFICATION_QUESTIONS", 5),
         ai_generative_title_enabled=_get_bool("AI_GENERATIVE_TITLE_ENABLED", False),
         ai_max_input_chars=_get_int("AI_MAX_INPUT_CHARS", 1000),
         ai_max_output_chars=_get_int("AI_MAX_OUTPUT_CHARS", 800),
@@ -212,6 +225,14 @@ def load_settings() -> AppSettings:
         channel_link_active_ttl_seconds=_get_int("CHANNEL_LINK_ACTIVE_TTL_SECONDS", 0),
         channel_link_pending_ttl_seconds=_get_int("CHANNEL_LINK_PENDING_TTL_SECONDS", 900),
         channel_link_audit_ttl_seconds=_get_int("CHANNEL_LINK_AUDIT_TTL_SECONDS", 31536000),
+        ticket_notifications_enabled=_get_bool("TICKET_NOTIFICATIONS_ENABLED", False),
+        ticket_notification_poll_interval_seconds=_get_int("TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS", 30),
+        ticket_notification_batch_size=_get_int("TICKET_NOTIFICATION_BATCH_SIZE", 50),
+        ticket_notification_internal_numbers=os.getenv("TICKET_NOTIFICATION_INTERNAL_NUMBERS", ""),
+        ticket_notification_include_private_events=_get_bool("TICKET_NOTIFICATION_INCLUDE_PRIVATE_EVENTS", True),
+        ticket_notification_watch_ttl_days=_get_int("TICKET_NOTIFICATION_WATCH_TTL_DAYS", 30),
+        whatsapp_outbound_base_url=os.getenv("WHATSAPP_OUTBOUND_BASE_URL", "http://whatsapp:8081"),
+        whatsapp_internal_api_token=os.getenv("WHATSAPP_INTERNAL_API_TOKEN", ""),
     )
     settings.validate_runtime_requirements()
     return settings

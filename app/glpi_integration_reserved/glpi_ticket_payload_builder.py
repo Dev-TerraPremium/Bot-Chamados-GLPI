@@ -26,6 +26,8 @@ class GLPITicketPayloadBuilder:
     def build_from_ticket_draft(self, draft: TicketDraft) -> dict:
         if self.require_glpi_category and not draft.glpi_category_id:
             raise ValueError("Categoria GLPI real obrigatoria para abertura em producao.")
+        if self.require_glpi_category and not draft.glpi_location_id:
+            raise ValueError("Localidade GLPI obrigatoria para abertura em producao.")
 
         category_mapping = None
         if not draft.glpi_category_id:
@@ -57,6 +59,7 @@ class GLPITicketPayloadBuilder:
             "impact_label": draft.impact_label,
             "severity": draft.severity,
             "location": draft.location,
+            "glpi_location_id": draft.glpi_location_id,
             "evidence": draft.evidence,
             "attachments": draft.attachments,
             "glpi_input": {
@@ -69,6 +72,7 @@ class GLPITicketPayloadBuilder:
                 "urgency": self._to_glpi_level(draft.impact_id),
                 "impact": self._to_glpi_level(draft.impact_id),
                 "priority": self._severity_to_priority(draft.severity),
+                "locations_id": draft.glpi_location_id,
                 "status": 1,
             },
         }
@@ -76,9 +80,6 @@ class GLPITicketPayloadBuilder:
     @staticmethod
     def _build_glpi_content(draft: TicketDraft) -> str:
         sections = [draft.description.strip()]
-
-        if draft.location:
-            sections.append(f"Localidade/Setor: {draft.location}")
 
         evidence = (draft.evidence or "").strip()
         if evidence and _normalize_control_text(evidence) != "nao informado":

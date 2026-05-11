@@ -100,7 +100,7 @@ class MockLocalGenerativeClient:
                 "status": "needs_clarification",
                 "organized_text": "",
                 "clarification_question": (
-                    "Pode descrever o problema ou solicitacao em uma frase curta?"
+                    "Pode descrever o problema ou solicitação em uma frase curta?"
                 ),
                 "confidence": 0.0,
             }
@@ -452,7 +452,7 @@ class GenerativeDescriptionOrganizer:
                 status="needs_clarification",
                 organized_text="",
                 clarification_question=(
-                    "Sua descricao esta muito longa para a IA local. "
+                    "Sua descrição está muito longa para a IA local. "
                     "Envie um resumo mais curto do problema."
                 ),
                 confidence=0.0,
@@ -517,12 +517,12 @@ class GenerativeDescriptionOrganizer:
                 status = "needs_clarification"
                 organized_text = ""
                 clarification_question = (
-                    "Nao consegui organizar a descricao com seguranca. "
-                    "Pode explicar novamente o problema ou solicitacao?"
+                    "Não consegui organizar a descrição com segurança. "
+                    "Pode explicar novamente o problema ou solicitação?"
                 )
         if status == "needs_clarification" and not clarification_question:
             clarification_question = (
-                "Nao entendi bem a descricao. Pode explicar novamente o que precisa?"
+                "Não entendi bem a descrição. Pode explicar novamente o que precisa?"
             )
 
         return DescriptionOrganizationResult(

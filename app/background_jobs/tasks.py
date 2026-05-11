@@ -12,6 +12,7 @@ from app.local_light_ai.generative_description_organizer import (
 )
 from app.local_light_ai.guided_ticket_detailer import build_guided_ticket_detailer
 from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
+from app.ticket_notifications.tasks import run_ticket_notification_poll_cycle
 
 
 worker_ticket_store = InMemoryTicketStore()
@@ -210,3 +211,12 @@ def add_glpi_followup_task(ticket_id: int, user_id: int, content: str) -> dict |
 )
 def validate_glpi_mapping_task(category_name: str) -> dict | None:
     return _build_glpi_client().find_category_by_name(category_name)
+
+
+@celery_app.task(
+    name="app.background_jobs.tasks.poll_ticket_notifications_task",
+    soft_time_limit=25,
+    time_limit=30,
+)
+def poll_ticket_notifications_task() -> dict:
+    return run_ticket_notification_poll_cycle()

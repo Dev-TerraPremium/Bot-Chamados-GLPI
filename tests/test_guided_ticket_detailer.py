@@ -114,8 +114,8 @@ def test_guided_detailer_uses_compact_summary_when_ready_payload_is_empty() -> N
         max_questions=5,
     )
 
-    assert result.is_ready
-    assert "Notebook do financeiro" in result.organized_text
+    assert result.asks_next
+    assert "acontec" in result.next_question.casefold()
 
 
 def test_guided_detailer_does_not_accept_ready_for_vague_initial_text() -> None:
@@ -139,7 +139,7 @@ def test_guided_detailer_does_not_accept_ready_for_vague_initial_text() -> None:
     )
 
     assert result.asks_next
-    assert "o que acontece" in result.next_question.casefold()
+    assert "acontec" in result.next_question.casefold()
 
 
 def test_guided_detailer_asks_question_for_generic_problem_of_something() -> None:
@@ -163,7 +163,7 @@ def test_guided_detailer_asks_question_for_generic_problem_of_something() -> Non
     )
 
     assert result.asks_next
-    assert "o que acontece" in result.next_question.casefold()
+    assert "acontec" in result.next_question.casefold()
 
 
 def test_guided_detailer_asks_question_for_generic_problem_with_qualifier() -> None:
@@ -187,7 +187,36 @@ def test_guided_detailer_asks_question_for_generic_problem_with_qualifier() -> N
     )
 
     assert result.asks_next
-    assert "o que acontece" in result.next_question.casefold()
+    assert "acontec" in result.next_question.casefold()
+
+
+def test_guided_detailer_asks_for_specific_system_when_context_is_still_generic() -> None:
+    detailer = GuidedTicketDetailer(
+        client=FakeGenerativeClient(
+            {
+                "status": "ready",
+                "next_question": "",
+                "organized_text": "",
+                "confidence": 0.9,
+            }
+        ),
+        backend_name="fake-generative",
+    )
+
+    result = detailer.detail_ticket_description(
+        original_description="Estou com problema em um sistema",
+        clarification_turns=[
+            {
+                "question": "Poderia me detalhar o que está acontecendo exatamente?",
+                "answer": "Ele fecha toda hora quando tento usar.",
+            }
+        ],
+        category_name=None,
+        max_questions=5,
+    )
+
+    assert result.asks_next
+    assert "aplicativo" in result.next_question.casefold() or "sistema" in result.next_question.casefold()
 
 
 def test_guided_detailer_replaces_diagnostic_ready_text_with_compact_summary() -> None:

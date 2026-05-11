@@ -31,18 +31,27 @@ class TicketSummaryBuilder:
         )
 
     def render_summary_message(self, summary: TicketSummary) -> str:
+        category = summary.category or "Sem categoria definida"
+        description = summary.description or "Sem descrição informada"
+        impact = summary.impact or "Impacto não informado"
+        location = summary.location or "Localidade não informada"
+        evidence = self._render_evidence_phrase(summary.evidence)
         return (
             "🏁 **Revisão Final**\n\n"
-            "Tudo pronto! Confira os dados antes de gerarmos o ticket:\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"📂 **Categoria:** {summary.category}\n"
-            f"📝 **Resumo:** {summary.description}\n"
-            f"🚦 **Impacto:** {summary.impact}\n"
-            f"📍 **Local:** {summary.location}\n"
-            f"📎 **Anexos:** {summary.evidence}\n"
-            "━━━━━━━━━━━━━━━━━━\n\n"
-            "Podemos abrir o chamado?\n\n"
+            f'Seu chamado será aberto na categoria **{category}**. '
+            f'O resumo que será enviado é: "{description}". '
+            f'O impacto informado é **{impact}**, na localidade **{location}**, '
+            f"e {evidence}\n\n"
+            "Posso abrir seu chamado agora?\n\n"
             "1️⃣ **Sim, confirmar abertura**\n"
             "2️⃣ **Preciso corrigir algo**\n"
             "3️⃣ **Desistir e cancelar**"
         )
+
+    def _render_evidence_phrase(self, evidence: str) -> str:
+        normalized = (evidence or "").strip()
+        if not normalized or normalized == "Não informado":
+            return "você não enviou anexos."
+        if normalized == "Anexos enviados pelo WhatsApp.":
+            return "você enviou anexos pelo WhatsApp."
+        return f'as evidências registradas foram: "{normalized}".'

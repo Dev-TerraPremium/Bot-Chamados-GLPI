@@ -30,7 +30,8 @@ def test_glpi_ticket_payload_builder_creates_rest_payload() -> None:
         impact_id=3,
         impact_label="Afeta somente voce e esta parado",
         severity="Alta",
-        location="TI - Matriz",
+        location="Matriz",
+        glpi_location_id=1,
         evidence="Nao informado",
         title="Estou com problema grave no meu desktop",
     )
@@ -44,9 +45,10 @@ def test_glpi_ticket_payload_builder_creates_rest_payload() -> None:
     assert payload["glpi_input"]["entities_id"] == 3
     assert payload["glpi_input"]["itilcategories_id"] == 455
     assert payload["glpi_input"]["_users_id_requester"] == 266
+    assert payload["glpi_input"]["locations_id"] == 1
     assert payload["glpi_input"]["priority"] == 4
     assert "Estou com problema grave no meu desktop." in content
-    assert "Localidade/Setor: TI - Matriz" in content
+    assert "Localidade/Setor" not in content
     assert "Gravidade calculada" not in content
     assert "Canal de origem" not in content
     assert "pedro.torres" not in content
@@ -68,7 +70,8 @@ def test_glpi_ticket_payload_builder_uses_real_category_and_authenticated_reques
         impact_id=2,
         impact_label="Afeta somente a mim",
         severity="Media",
-        location="TI",
+        location="Matriz",
+        glpi_location_id=1,
         evidence="Nao informado",
         title="Wi-Fi caindo",
     )
@@ -80,6 +83,7 @@ def test_glpi_ticket_payload_builder_uses_real_category_and_authenticated_reques
 
     assert payload["glpi_input"]["itilcategories_id"] == 544
     assert payload["glpi_input"]["_users_id_requester"] == 266
+    assert payload["glpi_input"]["locations_id"] == 1
     assert payload["category_name"] == "INFRAESTRUTURA > REDES > WI-FI"
 
 
@@ -102,7 +106,8 @@ def test_glpi_ticket_payload_builder_keeps_glpi_content_free_of_internal_metadat
         impact_id=2,
         impact_label="Afeta somente voce, mas ainda consegue trabalhar",
         severity="Media",
-        location="TI - Rondonopolis",
+        location="Rondonopolis",
+        glpi_location_id=91,
         evidence="Nao informado",
         title="Mouse com falha no clique",
     )
@@ -122,6 +127,7 @@ def test_glpi_ticket_payload_builder_keeps_glpi_content_free_of_internal_metadat
     assert "Pedro Torres" not in content
     assert "pedro.torres" not in content
     assert "INFRAESTRUTURA" not in content
+    assert "Localidade/Setor" not in content
 
 
 def test_glpi_ticket_payload_builder_requires_real_category_in_real_mode() -> None:
@@ -144,6 +150,33 @@ def test_glpi_ticket_payload_builder_requires_real_category_in_real_mode() -> No
     )
 
     with pytest.raises(ValueError, match="Categoria GLPI real obrigatoria"):
+        GLPITicketPayloadBuilder(
+            default_entity_id=3,
+            require_glpi_category=True,
+        ).build_from_ticket_draft(draft)
+
+
+def test_glpi_ticket_payload_builder_requires_real_location_in_real_mode() -> None:
+    draft = TicketDraft(
+        requester_name="Pedro Torres",
+        requester_login="pedro.torres",
+        requester_email="pedro.torres@terrapremium.com.br",
+        glpi_user_id=266,
+        channel="whatsapp",
+        opening_mode="Abertura assistida",
+        category_id=544,
+        category_name="WI-FI",
+        glpi_category_id=544,
+        description="Teste controlado.",
+        impact_id=1,
+        impact_label="Duvida simples",
+        severity="Baixa",
+        location="Matriz",
+        evidence="Nao informado",
+        title="Teste controlado",
+    )
+
+    with pytest.raises(ValueError, match="Localidade GLPI obrigatoria"):
         GLPITicketPayloadBuilder(
             default_entity_id=3,
             require_glpi_category=True,

@@ -124,6 +124,27 @@ services:
         "--loglevel=INFO",
       ]
 
+  scheduler:
+    build:
+      context: .
+    container_name: bot-chamados-scheduler
+    env_file:
+      - .env.docker
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "celery",
+        "-A",
+        "app.background_jobs.celery_app.celery_app",
+        "beat",
+        "--loglevel=INFO",
+      ]
+
   whatsapp:
     build:
       context: ./whatsapp_connector
@@ -133,6 +154,7 @@ services:
     environment:
       BOT_API_URL: http://web:8000/api/conversation/message
       WHATSAPP_STORE_PATH: /data/store.db
+      WHATSAPP_OUTBOUND_LISTEN_ADDR: :8081
     volumes:
       - whatsapp-store:/data
     depends_on:

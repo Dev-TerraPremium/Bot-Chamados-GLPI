@@ -18,6 +18,7 @@ class TicketDraft:
     location: str
     evidence: str
     title: str
+    glpi_location_id: int = 0
     ticket_type: int = 1
     glpi_category_id: int = 0
     glpi_category_complete_name: str = ""

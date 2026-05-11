@@ -5,16 +5,16 @@ def build_main_menu(user: AuthenticatedUser, opening_only: bool = False) -> str:
     if opening_only:
         return (
             f"👋 Olá, **{user.first_name}**!\n"
-            f"Você está conectado como **{user.login}** no Suporte TI — Terra Premium.\n\n"
-            "Como posso ser útil agora?\n\n"
+            f"Você está conectado como **{user.login}** no Suporte TI - Terra Premium.\n\n"
+            "Como posso ajudar agora?\n\n"
             "Digite o número da opção desejada:\n"
             "1️⃣ **Abrir um novo chamado**\n"
             "2️⃣ **Encerrar atendimento**"
         )
     return (
         f"👋 Olá, **{user.first_name}**!\n"
-        f"Você está conectado como **{user.login}** no Suporte TI — Terra Premium.\n\n"
-        "Como posso ser útil agora?\n\n"
+        f"Você está conectado como **{user.login}** no Suporte TI - Terra Premium.\n\n"
+        "Como posso ajudar agora?\n\n"
         "Digite o número da opção desejada:\n"
         "1️⃣ **Abrir um novo chamado**\n"
         "2️⃣ **Consultar meus chamados**\n"
@@ -26,8 +26,8 @@ def build_main_menu(user: AuthenticatedUser, opening_only: bool = False) -> str:
 def build_open_ticket_prompt() -> str:
     return (
         "📝 **Relato da Solicitação**\n\n"
-        "Por favor, descreva abaixo o que está acontecendo ou o que você precisa.\n\n"
-        "💡 **Dica:** Não se preocupe com a organização agora. Se faltar algum detalhe, eu farei perguntas rápidas para me ajudar a entender melhor.\n\n"
+        "Descreva o que está acontecendo ou o que você precisa.\n\n"
+        "Se faltar algum detalhe, eu vou te perguntar em seguida.\n\n"
         "Pode digitar sua descrição agora:"
     )
 
@@ -47,32 +47,9 @@ def build_description_clarification_message(
     question_number: int,
     max_questions: int,
 ) -> str:
-    return (
-        "🔍 **Refinando Informações**\n\n"
-        "Para que o TI resolva mais rápido, preciso de um detalhe adicional:\n\n"
-        f"📋 **Passo {question_number} de {max_questions}**\n"
-        f"{question}\n\n"
-        "👉 Responda de forma breve. Se não souber a resposta, digite **pular**."
-    )
-
-
-def build_category_assignment_message(
-    organized_text: str,
-    category_id: int,
-    category_name: str,
-) -> str:
-    return (
-        "🏷️ **Sugestão de Classificação**\n\n"
-        "Com base no seu relato, identifiquei a seguinte categoria:\n"
-        f"📂 **{category_name}**\n\n"
-        "Abaixo, veja como organizei seu texto para o técnico:\n"
-        f'"{organized_text}"\n\n'
-        "Como deseja prosseguir?\n\n"
-        "1️⃣ **Sim, está correto**\n"
-        "2️⃣ **Alterar categoria manualmente**\n"
-        "3️⃣ **Reescrever minha descrição**\n"
-        "4️⃣ **Cancelar abertura**"
-    )
+    del question_number
+    del max_questions
+    return question.strip()
 
 
 def build_query_menu() -> str:
@@ -94,9 +71,19 @@ def build_invalid_option_message() -> str:
     )
 
 
-def build_description_review_message(organized_text: str) -> str:
+def build_description_review_message(
+    organized_text: str,
+    category_name: str | None = None,
+) -> str:
+    category_block = ""
+    if category_name:
+        category_block = (
+            "Categoria definida para o chamado:\n"
+            f"📂 **{category_name}**\n\n"
+        )
     return (
         "👁️ **Revisão do Chamado**\n\n"
+        f"{category_block}"
         "Confira como sua solicitação será enviada ao técnico:\n\n"
         f'📝 "{organized_text}"\n\n'
         "O texto reflete bem o seu problema?\n\n"
@@ -107,21 +94,29 @@ def build_description_review_message(organized_text: str) -> str:
     )
 
 
-def build_location_prompt() -> str:
+def build_location_prompt(retry: bool = False) -> str:
+    if retry:
+        return (
+            "🏢 **Localidade do Chamado**\n\n"
+            "Não consegui localizar essa unidade no GLPI.\n\n"
+            "Informe novamente apenas a localidade que deve constar no chamado.\n\n"
+            "📍 **Exemplos:** Matriz, Rondonópolis\n\n"
+            "Digite a localidade abaixo:"
+        )
     return (
-        "🏢 **Sua Localização**\n\n"
-        "Para que o técnico saiba onde atuar, informe sua Unidade e Setor.\n\n"
-        "📍 **Exemplo:** Matriz - Financeiro\n\n"
-        "Digite sua localização abaixo:"
+        "🏢 **Localidade do Chamado**\n\n"
+        "Informe a localidade que deve constar no chamado.\n\n"
+        "📍 **Exemplos:** Matriz, Rondonópolis\n\n"
+        "Digite a localidade abaixo:"
     )
 
 
 def build_evidence_question() -> str:
     return (
         "📸 **Fotos e Evidências**\n\n"
-        "Você gostaria de enviar fotos, prints de erro ou documentos para ajudar na análise?\n\n"
+        "Você quer enviar fotos, prints ou documentos para ajudar na análise?\n\n"
         "1️⃣ **Sim, enviar anexos**\n"
-        "2️⃣ **Não, prosseguir sem anexos**"
+        "2️⃣ **Não, seguir sem anexos**"
     )
 
 

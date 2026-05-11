@@ -51,7 +51,7 @@ def test_category_assignment_rejects_unavailable_choice() -> None:
     controller.process_message(session_id, "wifi caindo no deposito")
     result = controller.process_message(session_id, "9")
 
-    assert result.state == "category_assignment_confirmation"
+    assert result.state == "description_review"
     assert "não está disponível" in result.bot_message
 
 
@@ -66,12 +66,10 @@ def test_location_requires_text_not_menu_number() -> None:
     controller.process_message(session_id, "1")
     controller.process_message(session_id, "wifi caindo no deposito")
     controller.process_message(session_id, "1")
-    controller.process_message(session_id, "1")
-    controller.process_message(session_id, "2")
     result = controller.process_message(session_id, "1")
 
     assert result.state == "location_collection"
-    assert "setor ou localidade" in result.bot_message
+    assert "localidade que deve constar no chamado" in result.bot_message
 
 
 def test_greeting_returns_main_menu_instead_of_invalid_choice() -> None:

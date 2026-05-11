@@ -23,6 +23,7 @@ class TicketFactory:
             impact_label=context.impact_label or "",
             severity=context.severity or "",
             location=context.location or "",
+            glpi_location_id=context.glpi_location_id or 0,
             evidence=context.evidence or "Não informado",
             title=context.suggested_title or "",
             ticket_type=context.ticket_type,

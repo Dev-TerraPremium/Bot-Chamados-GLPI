@@ -32,6 +32,7 @@ class ConversationMessageResponse(BaseModel):
     session_id: str
     bot_message: str
     state: str
+    bot_messages: list[str] | None = None
     ticket_preview: dict[str, Any] | None = None
     created_ticket: dict[str, Any] | None = None
 

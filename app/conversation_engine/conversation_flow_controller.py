@@ -15,7 +15,6 @@ from app.conversation_engine.conversation_context import ConversationContext
 from app.conversation_engine.conversation_input_parser import ConversationInputParser
 from app.conversation_engine.conversation_menu_validator import ConversationMenuValidator
 from app.conversation_engine.conversation_messages import (
-    build_category_assignment_message,
     build_complement_review_message,
     build_description_clarification_message,
     build_description_review_message,
@@ -45,6 +44,11 @@ from app.glpi_integration_reserved.glpi_category_catalog_service import (
 )
 from app.glpi_integration_reserved.glpi_client_factory import build_glpi_client
 from app.glpi_integration_reserved.glpi_future_real_client import GLPIClientError
+from app.glpi_integration_reserved.glpi_location_catalog_service import (
+    GLPILocationCatalogServiceInterface,
+    GLPILocationOption,
+    build_location_catalog_service,
+)
 from app.glpi_integration_reserved.glpi_ticket_payload_builder import (
     GLPITicketPayloadBuilder,
 )
@@ -58,6 +62,7 @@ from app.local_light_ai.generative_description_organizer import (
     build_generative_description_organizer,
 )
 from app.local_light_ai.guided_ticket_detailer import build_guided_ticket_detailer
+from app.local_light_ai.guided_ticket_detailer import MockGuidedTicketDetailer
 from app.security_and_abuse_protection.input_sanitizer import InputSanitizer
 from app.security_and_abuse_protection.message_size_limiter import MessageSizeLimiter
 from app.security_and_abuse_protection.suspicious_input_detector import (
@@ -66,6 +71,9 @@ from app.security_and_abuse_protection.suspicious_input_detector import (
 from app.security_and_abuse_protection.user_scope_guard import UserScopeGuard
 from app.shared_kernel.constants import DEFAULT_CHANNEL, SECURITY_BLOCK_MESSAGE
 from app.shared_kernel.result_types import ConversationTurnResult
+from app.ticket_notifications.integration import (
+    register_ticket_opened_for_notifications,
+)
 from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
 from app.ticket_domain.ticket_enums import TicketOpeningMode, TicketStatus
 from app.ticket_domain.ticket_factory import TicketFactory
@@ -95,6 +103,7 @@ class ConversationFlowController:
         glpi_client=None,
         description_organizer: GenerativeDescriptionOrganizer | None = None,
         description_detailer=None,
+        location_service: GLPILocationCatalogServiceInterface | None = None,
         rate_limiter=None,
         session_lock=None,
         idempotency_store=None,
@@ -122,6 +131,9 @@ class ConversationFlowController:
         self.suspicious_detector = SuspiciousInputDetector()
         self.user_scope_guard = UserScopeGuard()
         self.category_catalog = build_category_catalog_service(self.settings)
+        self.location_service = location_service or build_location_catalog_service(
+            self.settings
+        )
         self.category_usage_tracker = build_category_usage_tracker(self.settings)
         self.category_matching_service = (
             build_glpi_category_suggestion_service(
@@ -348,9 +360,6 @@ class ConversationFlowController:
             ConversationState.DESCRIPTION_CLARIFICATION: (
                 self._handle_description_clarification
             ),
-            ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION: (
-                self._handle_category_assignment_confirmation
-            ),
             ConversationState.CATEGORY_SELECTION: self._handle_category_selection,
             ConversationState.OTHER_CATEGORY_TEXT: self._handle_other_category_text,
             ConversationState.OTHER_CATEGORY_CONFIRMATION: (
@@ -534,54 +543,6 @@ class ConversationFlowController:
             category_source_text=source_text,
         )
 
-    def _handle_category_assignment_confirmation(
-        self, context: ConversationContext, message: str
-    ) -> ConversationTurnResult:
-        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
-        if not validation.is_valid:
-            return self._result(context, validation.message)
-
-        if validation.choice == 1:
-            if not self._apply_pending_category(context):
-                self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-                return self._result(
-                    context,
-                    "Nao consegui validar a categoria sugerida no GLPI. "
-                    "Escolha uma categoria real antes de abrir o chamado.\n\n"
-                    + self._render_real_category_menu(context),
-                )
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                build_description_review_message(context.organized_description or ""),
-            )
-        if validation.choice == 2:
-            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-            if self.settings.is_glpi_real_mode:
-                return self._result(context, self._render_real_category_menu(context))
-            return self._result(context, render_category_menu())
-        if validation.choice == 3:
-            self._set_category(context, 12)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                build_description_review_message(context.organized_description or ""),
-            )
-        if validation.choice == 4:
-            self._reset_description_for_rewrite(context)
-            self.state_machine.transition_to(
-                context,
-                ConversationState.DESCRIPTION_COLLECTION,
-            )
-            return self._result(context, build_open_ticket_prompt())
-
-        context.move_to_main_menu()
-        return self._result(
-            context,
-            "❌ **Chamado cancelado com segurança.**\n\n"
-            + self._build_main_menu(context.user),
-        )
-
     def _handle_category_selection(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
@@ -611,7 +572,7 @@ class ConversationFlowController:
         self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
         return self._result(
             context,
-            build_description_review_message(context.organized_description or ""),
+            self._build_description_review(context),
         )
 
     def _handle_real_category_selection(
@@ -633,7 +594,7 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
             return self._result(
                 context,
-                build_description_review_message(context.organized_description or ""),
+                self._build_description_review(context),
             )
 
         search_choice = len(options) + 1
@@ -642,15 +603,11 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.OTHER_CATEGORY_TEXT)
             return self._result(
                 context,
-                "Digite uma palavra para pesquisar na arvore de categorias do GLPI. Exemplo: wifi, senha, impressora.",
+                "Digite uma palavra para pesquisar na árvore de categorias do GLPI. Exemplo: wifi, senha, impressora.",
             )
         if choice == cancel_choice:
             context.move_to_main_menu()
-            return self._result(
-                context,
-                "Chamado cancelado com seguranca.\n\n"
-                + self._build_main_menu(context.user),
-            )
+            return self._cancel_to_main_menu(context, "❌ **Chamado cancelado com segurança.**")
 
         return self._result(
             context,
@@ -727,7 +684,7 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
             return self._result(
                 context,
-                build_description_review_message(context.organized_description or ""),
+                self._build_description_review(context),
             )
         if validation.choice == 2:
             self.state_machine.transition_to(context, ConversationState.OTHER_CATEGORY_TEXT)
@@ -740,7 +697,7 @@ class ConversationFlowController:
         self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
         return self._result(
             context,
-            build_description_review_message(context.organized_description or ""),
+            self._build_description_review(context),
         )
 
     def _handle_description_review(
@@ -762,11 +719,7 @@ class ConversationFlowController:
             return self._result(context, render_impact_menu())
 
         context.move_to_main_menu()
-        return self._result(
-            context,
-            "❌ **Chamado cancelado com segurança.**\n\n"
-            + self._build_main_menu(context.user),
-        )
+        return self._cancel_to_main_menu(context, "❌ **Chamado cancelado com segurança.**")
 
     def _handle_impact(
         self, context: ConversationContext, message: str
@@ -787,17 +740,31 @@ class ConversationFlowController:
             impact.id
         )
         self.state_machine.transition_to(context, ConversationState.LOCATION_COLLECTION)
+        context.awaiting_location_retry = False
         return self._result(context, build_location_prompt())
 
     def _handle_location(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
         if self.parser.parse_choice(message) is not None:
-            return self._result(
-                context,
-                "📍 Informe o setor ou localidade em texto, por exemplo: **TI - Matriz**.",
-            )
-        context.location = message
+            return self._result(context, build_location_prompt(context.awaiting_location_retry))
+
+        normalized_message = message.strip()
+        if not normalized_message:
+            return self._result(context, build_location_prompt(context.awaiting_location_retry))
+
+        if self.settings.is_glpi_real_mode:
+            resolved_location = self._resolve_glpi_location_from_text(normalized_message)
+            if resolved_location is None:
+                context.awaiting_location_retry = True
+                return self._result(context, build_location_prompt(retry=True))
+            context.location = resolved_location.display_name
+            context.glpi_location_id = resolved_location.id
+            context.awaiting_location_retry = False
+        else:
+            context.location = normalized_message
+            context.glpi_location_id = None
+
         self.state_machine.transition_to(context, ConversationState.EVIDENCE_DECISION)
         return self._result(context, build_evidence_question())
 
@@ -826,8 +793,8 @@ class ConversationFlowController:
             return self._result(
                 context,
                 "📤 **Espaço para Anexos**\n\n"
-                "Pode enviar seus arquivos agora (fotos, vídeos ou documentos).\n\n"
-                "Quando terminar de enviar tudo, digite a palavra **PRONTO** para finalizar.",
+                "Pode enviar seus arquivos agora, como fotos, vídeos ou documentos.\n\n"
+                "Quando terminar, digite **PRONTO**.",
             )
         context.evidence = "Não informado"
         return self._prepare_final_summary(context)
@@ -846,13 +813,13 @@ class ConversationFlowController:
                 context,
                 "Informação registrada.\n\n"
                 f"✅ **Recebidos:** {attachment_count}\n\n"
-                "Quando terminar de enviar tudo, digite a palavra **PRONTO** para finalizar."
+                "Quando terminar de enviar tudo, digite **PRONTO**."
             )
 
         if not context.evidence and not context.attachments:
             return self._result(
                 context,
-                "Ainda não recebi texto nem anexo. Envie a informação adicional ou digite *2* para voltar sem evidência.",
+                "Ainda não recebi texto nem anexo. Envie a informação adicional ou digite *2* para seguir sem evidências.",
             )
 
         if not context.evidence and context.attachments:
@@ -893,11 +860,7 @@ class ConversationFlowController:
             )
 
         context.move_to_main_menu()
-        return self._result(
-            context,
-            "❌ **Chamado cancelado com segurança.**\n\n"
-            + self._build_main_menu(context.user),
-        )
+        return self._cancel_to_main_menu(context, "❌ **Chamado cancelado com segurança.**")
 
     def _handle_query_menu(
         self, context: ConversationContext, message: str
@@ -1045,10 +1008,9 @@ class ConversationFlowController:
                 "✍️ Digite novamente o complemento que deseja adicionar.",
             )
         context.move_to_main_menu()
-        return self._result(
+        return self._cancel_to_main_menu(
             context,
-            "❌ **Complemento cancelado com segurança.**\n\n"
-            + self._build_main_menu(context.user),
+            "❌ **Complemento cancelado com segurança.**",
         )
 
     def _handle_exited(
@@ -1081,17 +1043,27 @@ class ConversationFlowController:
                 "Antes de abrir no GLPI, preciso de uma categoria real validada.\n\n"
                 + self._render_real_category_menu(context),
             )
+        if self.settings.is_glpi_real_mode and not context.glpi_location_id:
+            self.state_machine.transition_to(context, ConversationState.LOCATION_COLLECTION)
+            context.awaiting_location_retry = True
+            return self._result(
+                context,
+                "Antes de abrir no GLPI, preciso de uma localidade válida.\n\n"
+                + build_location_prompt(retry=True),
+            )
 
         idempotency_key = self._ticket_idempotency_key(context)
         existing_ticket = self.idempotency_store.get_result(idempotency_key)
         if existing_ticket:
             context.move_to_main_menu()
-            return self._result(
-                context,
+            created_message = (
                 "✅ **Esse chamado já foi registrado com segurança.**\n\n"
                 + self._render_created_ticket_message(existing_ticket)
-                + "\n\n"
-                + self._build_main_menu(context.user),
+            )
+            return self._result(
+                context,
+                created_message,
+                bot_messages=[created_message, self._build_main_menu(context.user)],
                 created_ticket=existing_ticket,
             )
 
@@ -1120,12 +1092,23 @@ class ConversationFlowController:
         self.idempotency_store.store_result(idempotency_key, created_ticket_data)
         if self.settings.is_glpi_real_mode and context.selected_glpi_category_id:
             self.category_usage_tracker.increment(context.selected_glpi_category_id)
+        try:
+            register_ticket_opened_for_notifications(
+                settings=self.settings,
+                context=context,
+                created_ticket=created_ticket_data,
+            )
+        except Exception:
+            logger.exception(
+                "ticket_notification_registration_failed",
+                extra={"session_id": context.session_id},
+            )
         context.move_to_main_menu()
+        created_message = self._render_created_ticket_message(created_ticket_data)
         return self._result(
             context,
-            self._render_created_ticket_message(created_ticket_data)
-            + "\n\n"
-            + self._build_main_menu(context.user),
+            created_message,
+            bot_messages=[created_message, self._build_main_menu(context.user)],
             created_ticket=created_ticket_data,
         )
 
@@ -1192,7 +1175,7 @@ class ConversationFlowController:
             self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
             return self._result(
                 context,
-                build_description_review_message(context.organized_description),
+                self._build_description_review(context),
             )
 
         if self.settings.is_glpi_real_mode:
@@ -1230,17 +1213,18 @@ class ConversationFlowController:
                 "confidence": category_match.confidence,
             },
         )
-        self.state_machine.transition_to(
-            context,
-            ConversationState.CATEGORY_ASSIGNMENT_CONFIRMATION,
-        )
+        if not self._apply_pending_category(context):
+            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+            return self._result(
+                context,
+                "Não consegui validar a categoria sugerida no GLPI. "
+                "Escolha uma categoria real antes de abrir o chamado.\n\n"
+                + self._render_real_category_menu(context),
+            )
+        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
         return self._result(
             context,
-            build_category_assignment_message(
-                context.organized_description,
-                category_match.category_id,
-                category_match.category_name,
-            ),
+            self._build_description_review(context),
         )
 
     def _detail_description(
@@ -1274,7 +1258,26 @@ class ConversationFlowController:
                 "local_guided_detailing_unavailable",
                 extra={"session_id": context.session_id, "state": context.state.value},
             )
-            return None
+            fallback_result = MockGuidedTicketDetailer(
+                backend_name="local-guided-fallback"
+            ).detail_ticket_description(
+                original_description=context.original_description or "",
+                clarification_turns=context.description_clarification_turns,
+                category_name=context.selected_category_name,
+                max_questions=self.settings.ai_max_clarification_questions,
+            )
+            logger.info(
+                "guided_detailing_fallback_completed",
+                extra={
+                    "session_id": context.session_id,
+                    "state": context.state.value,
+                    "purpose": "descricao_chamado_pergunta_guiada",
+                    "task_duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "backend": fallback_result.backend,
+                    "status": fallback_result.status,
+                },
+            )
+            return fallback_result
 
     def _build_detailing_source_text(self, context: ConversationContext) -> str:
         original_description = self._clip_text(context.original_description or "", 400)
@@ -1420,6 +1423,40 @@ class ConversationFlowController:
         )
         normalized = re.sub(r"[^\w\s]", " ", normalized)
         return re.sub(r"\s+", " ", normalized).strip()
+
+    def _resolve_glpi_location_from_text(
+        self,
+        message: str,
+    ) -> GLPILocationOption | None:
+        for candidate in self._location_query_candidates(message):
+            matches = self.location_service.search(candidate, limit=5)
+            if matches:
+                return matches[0]
+        return None
+
+    def _location_query_candidates(self, message: str) -> list[str]:
+        raw_candidates = [
+            message.strip(),
+            re.split(r"\s+-\s+", message, maxsplit=1)[0],
+            re.split(r"\s*/\s*", message, maxsplit=1)[0],
+            re.split(r"\s*,\s*", message, maxsplit=1)[0],
+        ]
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for raw_candidate in raw_candidates:
+            candidate = " ".join(raw_candidate.split())
+            normalized = self._normalize_control_text(candidate)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            candidates.append(candidate)
+        return candidates
+
+    def _build_description_review(self, context: ConversationContext) -> str:
+        return build_description_review_message(
+            context.organized_description or "",
+            context.selected_category_name,
+        )
 
     def _organize_description(
         self,
@@ -1717,9 +1754,7 @@ class ConversationFlowController:
             f"📂 **Categoria:** {category}\n"
             f"🚦 **Prioridade:** {created_ticket['severity']}\n"
             f"{attachment_feedback}\n"
-            "━━━━━━━━━━━━━━━━━━\n\n"
-            "⏳ **Próximo passo:** Um técnico analisará seu caso e você receberá atualizações por aqui.\n\n"
-            "Envie qualquer mensagem para voltar ao menu principal."
+            "\n⏳ **Próximo passo:** Um técnico analisará seu caso e você receberá atualizações por aqui."
         )
 
     def _result(
@@ -1728,11 +1763,25 @@ class ConversationFlowController:
         bot_message: str,
         ticket_preview: dict | None = None,
         created_ticket: dict | None = None,
+        bot_messages: list[str] | None = None,
     ) -> ConversationTurnResult:
         return ConversationTurnResult(
             session_id=context.session_id,
             bot_message=bot_message,
             state=context.state.value,
+            bot_messages=bot_messages,
             ticket_preview=ticket_preview,
             created_ticket=created_ticket,
+        )
+
+    def _cancel_to_main_menu(
+        self,
+        context: ConversationContext,
+        confirmation_message: str,
+    ) -> ConversationTurnResult:
+        main_menu = self._build_main_menu(context.user)
+        return self._result(
+            context,
+            confirmation_message,
+            bot_messages=[confirmation_message, main_menu],
         )
