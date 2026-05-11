@@ -13,6 +13,7 @@ from app.local_light_ai.description_organization_models import (
     DescriptionOrganizationResult,
 )
 from app.glpi_integration_reserved.glpi_category_catalog_service import GLPICategoryOption
+from app.glpi_integration_reserved.glpi_future_real_client import GLPIClientError
 from app.ticket_domain.ticket_models import TicketCreated
 
 
@@ -60,6 +61,22 @@ class FakeRealCategorySuggester:
         from app.triage_rules.category_matching_service import CategoryMatch
 
         return CategoryMatch(544, "INFRAESTRUTURA > REDES > WI-FI", 0.9, "fake")
+
+
+class FailingRealCatalog:
+    def get_categories(self, ticket_type=None):
+        raise GLPIClientError("GLPI recusou a operacao solicitada.")
+
+    def get_by_id(self, category_id: int):
+        raise GLPIClientError("GLPI recusou a operacao solicitada.")
+
+    def search(self, query: str, *, ticket_type=None, limit: int = 5):
+        raise GLPIClientError("GLPI recusou a operacao solicitada.")
+
+
+class FailingRealCategorySuggester:
+    def find_best_match(self, text: str, *, ticket_type=None):
+        raise GLPIClientError("GLPI recusou a operacao solicitada.")
 
 
 class FakeUsageTracker:

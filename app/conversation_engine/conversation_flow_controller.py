@@ -661,11 +661,21 @@ class ConversationFlowController:
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
         if self.settings.is_glpi_real_mode:
-            results = self.category_catalog.search(
-                message,
-                ticket_type=context.ticket_type,
-                limit=5,
-            )
+            try:
+                results = self.category_catalog.search(
+                    message,
+                    ticket_type=context.ticket_type,
+                    limit=5,
+                )
+            except GLPIClientError:
+                logger.exception(
+                    "glpi_category_search_failed",
+                    extra={"session_id": context.session_id},
+                )
+                return self._glpi_category_unavailable_result(
+                    context,
+                    "Nao consegui pesquisar as categorias reais do GLPI agora.",
+                )
             self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
             if not results:
                 return self._result(
@@ -1186,14 +1196,24 @@ class ConversationFlowController:
             )
 
         if self.settings.is_glpi_real_mode:
-            category_match = self.category_matching_service.find_best_match(
-                category_source_text,
-                ticket_type=context.ticket_type,
-            )
-            category = self.category_catalog.get_by_id(category_match.category_id)
-            if category is not None:
-                context.pending_glpi_category_id = category.id
-                context.pending_category_complete_name = category.complete_name
+            try:
+                category_match = self.category_matching_service.find_best_match(
+                    category_source_text,
+                    ticket_type=context.ticket_type,
+                )
+                category = self.category_catalog.get_by_id(category_match.category_id)
+                if category is not None:
+                    context.pending_glpi_category_id = category.id
+                    context.pending_category_complete_name = category.complete_name
+            except GLPIClientError:
+                logger.exception(
+                    "glpi_category_suggestion_failed",
+                    extra={"session_id": context.session_id},
+                )
+                return self._glpi_category_unavailable_result(
+                    context,
+                    "Consegui organizar sua descricao, mas nao consegui consultar as categorias reais do GLPI agora.",
+                )
         else:
             category_match = self.category_matching_service.find_best_match(
                 category_source_text
@@ -1554,7 +1574,14 @@ class ConversationFlowController:
     def _apply_pending_category(self, context: ConversationContext) -> bool:
         if self.settings.is_glpi_real_mode:
             category_id = context.pending_glpi_category_id or context.pending_category_suggestion_id
-            category = self.category_catalog.get_by_id(category_id or 0)
+            try:
+                category = self.category_catalog.get_by_id(category_id or 0)
+            except GLPIClientError:
+                logger.exception(
+                    "glpi_pending_category_validation_failed",
+                    extra={"session_id": context.session_id},
+                )
+                return False
             if category is not None:
                 self._set_glpi_category(context, category)
                 return True
@@ -1579,11 +1606,22 @@ class ConversationFlowController:
         categories: list[GLPICategoryOption] | None = None,
         title: str = "Categorias GLPI mais usadas no bot:",
     ) -> str:
-        categories = categories or self.category_usage_tracker.top_categories(
-            self.category_catalog,
-            ticket_type=context.ticket_type,
-            limit=5,
-        )
+        try:
+            categories = categories or self.category_usage_tracker.top_categories(
+                self.category_catalog,
+                ticket_type=context.ticket_type,
+                limit=5,
+            )
+        except GLPIClientError:
+            logger.exception(
+                "glpi_category_menu_failed",
+                extra={"session_id": context.session_id},
+            )
+            context.category_selection_options = []
+            return (
+                "Nao consegui carregar as categorias reais do GLPI agora. "
+                "Tente novamente em instantes."
+            )
         context.category_selection_options = [self._category_to_context_dict(category) for category in categories[:5]]
         if not context.category_selection_options:
             return (
@@ -1615,6 +1653,17 @@ class ConversationFlowController:
             "is_incident": category.is_incident,
             "is_request": category.is_request,
         }
+
+    def _glpi_category_unavailable_result(
+        self,
+        context: ConversationContext,
+        message: str,
+    ) -> ConversationTurnResult:
+        self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
+        return self._result(
+            context,
+            message + "\n\nNao vou perder sua descricao. Tente novamente em instantes.",
+        )
 
     @staticmethod
     def _keycap(number: int) -> str:

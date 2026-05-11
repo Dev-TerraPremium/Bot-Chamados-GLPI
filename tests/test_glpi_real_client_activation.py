@@ -114,3 +114,70 @@ def test_glpi_real_client_uploads_attachment_after_ticket_creation() -> None:
     assert ticket.ticket_number == 1234
     assert any(method == "POST" and path.endswith("/Document") for method, path in calls)
     assert any(method == "POST" and path.endswith("/Document_Item") for method, path in calls)
+
+
+def test_glpi_real_client_retries_once_after_expired_session() -> None:
+    calls: list[tuple[str, str, str | None]] = []
+    session_counter = {"value": 1}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        session_token = request.headers.get("Session-Token")
+        calls.append((request.method, request.url.path, session_token))
+        if request.url.path.endswith("/initSession"):
+            session_counter["value"] += 1
+            return httpx.Response(200, json={"session_token": f"session-{session_counter['value']}"})
+        if request.url.path.endswith("/listSearchOptions/ITILCategory"):
+            if session_token == "session-1":
+                return httpx.Response(401, json={"message": "unauthorized"})
+            if session_token == "session-2":
+                return httpx.Response(200, json={"ok": True})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = GLPIRealClient(
+        GLPIIntegrationConfig(
+            base_url="https://glpi.local/apirest.php",
+            app_token="app",
+            user_token="user",
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    client._session_token = "session-1"
+
+    assert client.list_search_options("ITILCategory") == {"ok": True}
+    assert [path for _, path, _ in calls].count("/apirest.php/initSession") == 1
+    assert [
+        token for _, path, token in calls if path == "/apirest.php/listSearchOptions/ITILCategory"
+    ] == ["session-1", "session-2"]
+
+
+def test_glpi_real_client_caps_session_retry_after_second_unauthorized() -> None:
+    calls: list[tuple[str, str, str | None]] = []
+    session_counter = {"value": 1}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        session_token = request.headers.get("Session-Token")
+        calls.append((request.method, request.url.path, session_token))
+        if request.url.path.endswith("/initSession"):
+            session_counter["value"] += 1
+            return httpx.Response(200, json={"session_token": f"session-{session_counter['value']}"})
+        if request.url.path.endswith("/listSearchOptions/ITILCategory"):
+            return httpx.Response(401, json={"message": "unauthorized"})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = GLPIRealClient(
+        GLPIIntegrationConfig(
+            base_url="https://glpi.local/apirest.php",
+            app_token="app",
+            user_token="user",
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    client._session_token = "session-1"
+
+    with pytest.raises(GLPIClientError):
+        client.list_search_options("ITILCategory")
+
+    assert [path for _, path, _ in calls].count("/apirest.php/initSession") == 1
+    assert [
+        token for _, path, token in calls if path == "/apirest.php/listSearchOptions/ITILCategory"
+    ] == ["session-1", "session-2"]

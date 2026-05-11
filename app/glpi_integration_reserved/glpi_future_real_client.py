@@ -31,6 +31,7 @@ class GLPIRealClient(GLPIClientInterface):
         self.base_url = config.normalized_base_url
         self._session_token: str | None = None
         self._transport = transport
+        self._is_initializing_session = False
 
     def init_session(self) -> str:
         if self._session_token:
@@ -46,7 +47,14 @@ class GLPIRealClient(GLPIClientInterface):
         if not session_token:
             raise GLPIClientError("GLPI nao retornou session_token.")
         self._session_token = str(session_token)
-        self._activate_profile_and_entity()
+        self._is_initializing_session = True
+        try:
+            self._activate_profile_and_entity()
+        except GLPIClientError:
+            self._session_token = None
+            raise
+        finally:
+            self._is_initializing_session = False
         return self._session_token
 
     def kill_session(self) -> None:
@@ -193,6 +201,7 @@ class GLPIRealClient(GLPIClientInterface):
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
         use_session: bool = True,
+        allow_session_retry: bool = True,
     ) -> dict:
         self._ensure_base_url_allowed()
 
@@ -200,6 +209,7 @@ class GLPIRealClient(GLPIClientInterface):
             "App-Token": self.config.app_token,
             "Content-Type": "application/json",
         }
+        session_token = self._session_token if use_session else None
         if use_session:
             request_headers["Session-Token"] = self.init_session()
         if headers:
@@ -225,6 +235,26 @@ class GLPIRealClient(GLPIClientInterface):
                 )
                 response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            if self._should_retry_after_unauthorized(
+                exc,
+                use_session=use_session,
+                allow_session_retry=allow_session_retry,
+                session_token=session_token,
+            ):
+                logger.info(
+                    "glpi_session_retry_after_unauthorized",
+                    extra={"method": method, "path": path},
+                )
+                self._session_token = None
+                return self._request(
+                    method,
+                    path,
+                    headers=headers,
+                    params=params,
+                    json=json,
+                    use_session=use_session,
+                    allow_session_retry=False,
+                )
             safe_body = self._redact(str(exc.response.text))
             logger.warning(
                 "glpi_http_status_error",
@@ -256,8 +286,10 @@ class GLPIRealClient(GLPIClientInterface):
         path: str,
         *,
         files: dict[str, Any],
+        allow_session_retry: bool = True,
     ) -> dict:
         self._ensure_base_url_allowed()
+        session_token = self._session_token
         request_headers = {
             "App-Token": self.config.app_token,
             "Session-Token": self.init_session(),
@@ -279,6 +311,23 @@ class GLPIRealClient(GLPIClientInterface):
                 )
                 response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            if self._should_retry_after_unauthorized(
+                exc,
+                use_session=True,
+                allow_session_retry=allow_session_retry,
+                session_token=session_token,
+            ):
+                logger.info(
+                    "glpi_session_retry_after_unauthorized",
+                    extra={"method": method, "path": path, "multipart": True},
+                )
+                self._session_token = None
+                return self._request_multipart(
+                    method,
+                    path,
+                    files=files,
+                    allow_session_retry=False,
+                )
             safe_body = self._redact(str(exc.response.text))
             logger.warning(
                 "glpi_multipart_http_status_error",
@@ -303,6 +352,22 @@ class GLPIRealClient(GLPIClientInterface):
         if isinstance(payload, list):
             return {"items": payload}
         return payload
+
+    def _should_retry_after_unauthorized(
+        self,
+        exc: httpx.HTTPStatusError,
+        *,
+        use_session: bool,
+        allow_session_retry: bool,
+        session_token: str | None,
+    ) -> bool:
+        if exc.response.status_code != 401:
+            return False
+        if not use_session or not allow_session_retry:
+            return False
+        if self._is_initializing_session:
+            return False
+        return bool(session_token)
 
     def _ensure_base_url_allowed(self) -> None:
         if self.base_url.startswith("https://"):
