@@ -5,7 +5,7 @@ from app.ticket_notifications.event_detector import TicketEventDetector
 from app.ticket_notifications.event_reader import GLPITicketEventReader
 from app.ticket_notifications.event_store import TicketNotificationStore
 from app.ticket_notifications.message_renderer import TicketNotificationMessageRenderer
-from app.ticket_notifications.models import TicketActivitySnapshot, WatchedTicket
+from app.ticket_notifications.models import TicketActivitySnapshot, TicketEvent, WatchedTicket
 from app.ticket_notifications.pipeline import TicketNotificationPipeline
 
 
@@ -198,7 +198,9 @@ def test_glpi_event_reader_maps_related_item_endpoints():
 
 
 def test_renderer_uses_natural_language_without_menu_title():
-    renderer = TicketNotificationMessageRenderer()
+    renderer = TicketNotificationMessageRenderer(
+        ticket_url_template="https://glpi.local/front/ticket.form.php?id={ticket_id}"
+    )
     watched = WatchedTicket(
         ticket_id=9145,
         requester_phone="556699990980",
@@ -225,6 +227,73 @@ def test_renderer_uses_natural_language_without_menu_title():
         )[0],
     )
 
-    assert message.startswith("Pedro, ")
-    assert "nova resposta" in message
+    assert "chamado *#9145*" in message
+    assert "resposta" in message
+    assert "https://glpi.local/front/ticket.form.php?id=9145" in message
     assert "Notificacao" not in message
+
+
+def test_renderer_varies_opening_and_describes_ticket_changes():
+    renderer = TicketNotificationMessageRenderer()
+    watched = WatchedTicket(
+        ticket_id=9155,
+        requester_phone="556699990980",
+        requester_name="Pedro Torres",
+        requester_login="pedro.torres",
+        category_name="Infraestrutura",
+        title="Mouse e teclado",
+        location="Rondonópolis",
+        created_at="2026-05-11 15:00:00",
+    )
+    events = [
+        TicketEvent(
+            ticket_id=9155,
+            event_type="ticket_status_changed",
+            source_itemtype="Ticket",
+            source_id=f"status-{index}",
+            occurred_at=f"2026-05-11 15:0{index}:00",
+            is_private=False,
+            actor="266",
+            old_value="novo",
+            new_value="em atendimento",
+            raw_payload={"field": "status"},
+        )
+        for index in range(5)
+    ]
+
+    messages = [renderer.render_user_message(watched, event) for event in events]
+
+    assert len({message.split(":")[0] for message in messages}) > 1
+    assert any(not message.startswith("Pedro,") for message in messages)
+    assert all("o *status* mudou de *novo* para *em atendimento*" in message for message in messages)
+
+
+def test_renderer_names_linked_person_when_available():
+    renderer = TicketNotificationMessageRenderer()
+    watched = WatchedTicket(
+        ticket_id=9155,
+        requester_phone="556699990980",
+        requester_name="Pedro Torres",
+        requester_login="pedro.torres",
+        category_name="Infraestrutura",
+        title="Mouse e teclado",
+        location="Rondonópolis",
+        created_at="2026-05-11 15:00:00",
+    )
+    event = TicketEvent(
+        ticket_id=9155,
+        event_type="ticket_user_changed",
+        source_itemtype="Ticket_User",
+        source_id="20",
+        occurred_at="2026-05-11 15:10:00",
+        is_private=False,
+        actor="266",
+        old_value="",
+        new_value="266",
+        raw_payload={"users_id": 266, "name": "Pedro Américo Paletot"},
+    )
+
+    message = renderer.render_user_message(watched, event)
+
+    assert "pessoas vinculadas" in message
+    assert "Pedro Américo Paletot" in message

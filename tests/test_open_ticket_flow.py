@@ -188,7 +188,10 @@ def send(
 def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
     session_id = str(uuid4())
     controller = ConversationFlowController(
-        settings=AppSettings(ai_guided_detailing_enabled=False),
+        settings=AppSettings(
+            ai_guided_detailing_enabled=False,
+            glpi_ticket_public_url_template="https://glpi.local/front/ticket.form.php?id={ticket_id}",
+        ),
         description_organizer=FakeDescriptionOrganizer("Wi-Fi caindo no depósito.")
     )
 
@@ -208,6 +211,10 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
 
     created_response = send(controller, session_id, "1")
     assert "Chamado Aberto com Sucesso!" in created_response["bot_message"]
+    assert (
+        f"https://glpi.local/front/ticket.form.php?id={created_response['created_ticket']['ticket_number']}"
+        in created_response["bot_message"]
+    )
     assert created_response["created_ticket"]["status"] == "Aberto"
     assert created_response["created_ticket"]["category_name"] == "Ubiquiti / Wi-Fi"
 

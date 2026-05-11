@@ -37,7 +37,9 @@ class TicketNotificationPipeline:
         self.detector = detector or TicketEventDetector(self.store)
         self.event_reader = event_reader
         self.dispatcher = dispatcher
-        self.renderer = renderer or TicketNotificationMessageRenderer()
+        self.renderer = renderer or TicketNotificationMessageRenderer(
+            ticket_url_template=settings.glpi_ticket_public_url_template
+        )
         self.metrics = metrics or NotificationMetricsRecorder(redis_client)
 
     def run_once(self) -> dict[str, int]:

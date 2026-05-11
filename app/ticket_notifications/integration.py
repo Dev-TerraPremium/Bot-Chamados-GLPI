@@ -70,7 +70,9 @@ def _send_internal_ticket_opened_notification(
         base_url=settings.whatsapp_outbound_base_url,
         internal_token=settings.whatsapp_internal_api_token,
     )
-    renderer = TicketNotificationMessageRenderer()
+    renderer = TicketNotificationMessageRenderer(
+        ticket_url_template=settings.glpi_ticket_public_url_template
+    )
     message = renderer.render_internal_ticket_opened(watched_ticket, created_ticket)
     for number in numbers:
         result = dispatcher.send_message(number, message)

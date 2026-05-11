@@ -74,6 +74,7 @@ from app.shared_kernel.result_types import ConversationTurnResult
 from app.ticket_notifications.integration import (
     register_ticket_opened_for_notifications,
 )
+from app.ticket_notifications.ticket_links import build_ticket_public_url
 from app.simulated_persistence.in_memory_ticket_store import InMemoryTicketStore
 from app.ticket_domain.ticket_enums import TicketOpeningMode, TicketStatus
 from app.ticket_domain.ticket_factory import TicketFactory
@@ -1790,6 +1791,11 @@ class ConversationFlowController:
 
     def _render_created_ticket_message(self, created_ticket: dict) -> str:
         category = created_ticket.get("category") or created_ticket.get("category_name") or "Suporte TI"
+        ticket_number = created_ticket["ticket_number"]
+        ticket_url = build_ticket_public_url(
+            self.settings.glpi_ticket_public_url_template,
+            ticket_number,
+        )
         expected_attachments = int(created_ticket.get("attachments_expected_count") or 0)
         uploaded_attachments = int(created_ticket.get("attachments_uploaded_count") or 0)
         attachment_errors = [str(item) for item in created_ticket.get("attachment_errors") or []]
@@ -1807,12 +1813,14 @@ class ConversationFlowController:
             )
         else:
             attachment_feedback = attachment_line
+        ticket_link_line = f"🔗 **Acessar chamado:** {ticket_url}\n" if ticket_url else ""
         return (
             "🎉 **Chamado Aberto com Sucesso!**\n\n"
             "Sua solicitação já está com nossa equipe técnica.\n\n"
-            f"🆔 **Ticket:** #{created_ticket['ticket_number']}\n"
+            f"🆔 **Ticket:** #{ticket_number}\n"
             f"📂 **Categoria:** {category}\n"
             f"🚦 **Prioridade:** {created_ticket['severity']}\n"
+            f"{ticket_link_line}"
             f"{attachment_feedback}\n"
             "\n⏳ **Próximo passo:** Um técnico analisará seu caso e você receberá atualizações por aqui."
         )

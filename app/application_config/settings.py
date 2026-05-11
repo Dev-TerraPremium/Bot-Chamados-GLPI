@@ -83,6 +83,7 @@ class AppSettings:
     glpi_session_ttl_seconds: int = 600
     glpi_create_ticket_idempotency_ttl_seconds: int = 300
     glpi_ticket_requester_search_field: int = 4
+    glpi_ticket_public_url_template: str = ""
     expose_debug_routes: bool = True
     channel_linking_mode: str = "mock"
     channel_link_cpf_prefix_length: int = 4
@@ -216,6 +217,7 @@ def load_settings() -> AppSettings:
         glpi_ticket_requester_search_field=_get_int(
             "GLPI_TICKET_REQUESTER_SEARCH_FIELD", 4
         ),
+        glpi_ticket_public_url_template=os.getenv("GLPI_TICKET_PUBLIC_URL_TEMPLATE", ""),
         expose_debug_routes=_get_bool("EXPOSE_DEBUG_ROUTES", True),
         channel_linking_mode=os.getenv("CHANNEL_LINKING_MODE", "mock"),
         channel_link_cpf_prefix_length=_get_int("CHANNEL_LINK_CPF_PREFIX_LENGTH", 4),
