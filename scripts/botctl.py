@@ -341,15 +341,27 @@ def restart(args: argparse.Namespace) -> None:
 
 
 def logs(args: argparse.Namespace) -> None:
-    service = args.service
+    service = getattr(args, "service", "all") or "all"
     if service and service not in SERVICES and service != "all":
         fail(f"Servico invalido. Use: {', '.join(SERVICES)} ou all")
-    parts = ["logs", f"--tail={args.tail}"]
-    if args.follow:
-        parts.append("-f")
+    
+    base_parts = compose_args("logs", f"--tail={getattr(args, 'tail', 150)}")
+    if getattr(args, "follow", False):
+        base_parts.append("-f")
     if service and service != "all":
-        parts.append(service)
-    compose(*parts, check=False)
+        base_parts.append(service)
+    
+    # Use full system shell to allow correct terminal passthrough of color codes & pipes
+    cmd_str = shlex.join(base_parts)
+    
+    grep_str = getattr(args, "grep", None)
+    if grep_str:
+        # Protect the grep string and enforce line-buffering for live tracking
+        safe_grep = shlex.quote(grep_str)
+        cmd_str += f" | grep --line-buffered -i --color=always {safe_grep}"
+
+    # Pass direct to user shell context to handle raw streams and CTRL+C correctly
+    os.system(cmd_str)
 
 
 def env_cmd(args: argparse.Namespace) -> None:
@@ -483,13 +495,67 @@ def confirm(question: str) -> bool:
     return answer == "SIM"
 
 
+def menu_logs() -> None:
+    print(c("ASSISTENTE AVANÇADO DE LOGS", "cyan+bold"))
+    
+    # 1. Service Selection
+    print("\nEscolha o Serviço:")
+    print("  0. Todos os serviços (Geral)")
+    for idx, svc in enumerate(SERVICES, 1):
+        print(f"  {idx}. {svc}")
+    
+    try:
+        svc_choice = input(c("\nEscolha [0]: ", "green")).strip() or "0"
+        if svc_choice == "0":
+            service = "all"
+        else:
+            service = SERVICES[int(svc_choice) - 1]
+    except (ValueError, IndexError):
+        warn("Opção inválida. Usando 'all'.")
+        service = "all"
+
+    # 2. Tail Definition
+    print("\nQuantidade de linhas retroativas (Tail):")
+    print("  1. 100 linhas")
+    print("  2. 500 linhas")
+    print("  3. 2000 linhas (Geralmente cobre o dia)")
+    print("  4. Todo o histórico disponível (Pode ser lento)")
+    
+    tail_choice = input(c("\nEscolha [1]: ", "green")).strip() or "1"
+    tail_map = {"1": 100, "2": 500, "3": 2000, "4": "all"}
+    tail_lines = tail_map.get(tail_choice, 100)
+
+    # 3. Follow Mode
+    follow_raw = input(c("\nDeseja acompanhar em tempo real? (Live/Follow) [S/n]: ", "green")).strip().lower()
+    follow = follow_raw != "n"
+
+    # 4. Grep Filter
+    print(c("\nFiltro de Conteúdo (Opcional):", "dim"))
+    print("Exemplo: 'Error', 'POST', 'User ID', 'GLPI'")
+    grep_val = input(c("Palavra-chave para filtrar (Vazio para nenhum): ", "green")).strip()
+
+    # Run
+    header(f"EXIBINDO LOGS: {service.upper()} (Tail={tail_lines})")
+    if grep_val:
+        info(f"Filtro ativo: {grep_val}")
+    print(c("Pressione CTRL+C para encerrar e voltar ao menu.\n", "dim"))
+    
+    ns = argparse.Namespace(
+        service=service, 
+        tail=tail_lines, 
+        follow=follow, 
+        grep=grep_val if grep_val else None
+    )
+    logs(ns)
+
+
 def interactive(_: argparse.Namespace | None = None) -> None:
     # Logical grouping definition
     layout = {
         "TELEMETRIA & STATUS": {
             "1": ("Visualizar Status Geral", lambda: status(None)),
             "11": ("Diagnóstico de Infraestrutura", lambda: doctor(None)),
-            "6": ("Últimos Logs do Servidor Web", lambda: logs(argparse.Namespace(service="web", follow=False, tail=160))),
+            "6": ("Assistente Avançado de Logs", menu_logs),
         },
         "CONTROLE DA STACK": {
             "2": ("Ligar Todos os Serviços", lambda: up(argparse.Namespace(build=False, services=[]))),
@@ -660,7 +726,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_logs = sub.add_parser("logs", help="Mostra logs.")
     p_logs.add_argument("service", nargs="?", default="all", help="Servico ou all.")
     p_logs.add_argument("-f", "--follow", action="store_true", help="Segue logs.")
-    p_logs.add_argument("--tail", type=int, default=120, help="Quantidade de linhas.")
+    p_logs.add_argument("--tail", type=str, default="150", help="Quantidade de linhas.")
+    p_logs.add_argument("-g", "--grep", type=str, default=None, help="Filtro de conteudo.")
     p_logs.set_defaults(func=logs)
 
     sub.add_parser("qr", help="Segue logs do WhatsApp para QR/conexao.").set_defaults(func=qr)
