@@ -22,12 +22,12 @@ def get_impact_by_id(impact_id: int) -> ImpactOption | None:
 
 def render_impact_menu() -> str:
     return (
-        "Nível de Impacto\n\n"
+        "🚦 **Nível de Impacto**\n\n"
         "Como esse problema está afetando seu trabalho agora?\n\n"
-        "1. Apenas uma dúvida ou pedido simples.\n"
-        "2. Consigo trabalhar, mas com dificuldades.\n"
-        "3. Não consigo trabalhar por causa disso.\n"
-        "4. Afeta várias pessoas ou um setor inteiro.\n\n"
+        "1️⃣ 🟢 Apenas uma dúvida ou pedido simples.\n"
+        "2️⃣ 🟡 Consigo trabalhar, mas com dificuldades.\n"
+        "3️⃣ 🟠 Não consigo trabalhar por causa disso.\n"
+        "4️⃣ 🔴 Afeta várias pessoas ou um setor inteiro.\n\n"
         "Digite o número da opção:"
     )
 

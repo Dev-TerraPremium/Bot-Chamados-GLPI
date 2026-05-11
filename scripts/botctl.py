@@ -348,6 +348,11 @@ def logs(args: argparse.Namespace) -> None:
     base_parts = compose_args("logs", f"--tail={getattr(args, 'tail', 150)}")
     if getattr(args, "follow", False):
         base_parts.append("-f")
+    
+    since_str = getattr(args, "since", None)
+    if since_str:
+        base_parts.append(f"--since={since_str}")
+        
     if service and service != "all":
         base_parts.append(service)
     
@@ -525,24 +530,48 @@ def menu_logs() -> None:
     tail_map = {"1": 100, "2": 500, "3": 2000, "4": "all"}
     tail_lines = tail_map.get(tail_choice, 100)
 
-    # 3. Follow Mode
+    # 3. Since/Datetime Filter
+    print("\nFiltrar por Período de Tempo (Since):")
+    print("  0. Não filtrar por tempo")
+    print("  1. Últimos 10 minutos (10m)")
+    print("  2. Última 1 hora (1h)")
+    print("  3. Últimas 24 horas (24h)")
+    print("  4. Personalizado (ex: 2026-05-11T15:00:00 ou 2h)")
+    
+    since_choice = input(c("\nEscolha [0]: ", "green")).strip() or "0"
+    since_val = None
+    if since_choice == "1":
+        since_val = "10m"
+    elif since_choice == "2":
+        since_val = "1h"
+    elif since_choice == "3":
+        since_val = "24h"
+    elif since_choice == "4":
+        since_val = input(c("\nDigite a janela tempo (ex: 30m ou 2026-01-01): ", "green")).strip()
+
+    # 4. Follow Mode
     follow_raw = input(c("\nDeseja acompanhar em tempo real? (Live/Follow) [S/n]: ", "green")).strip().lower()
     follow = follow_raw != "n"
 
-    # 4. Grep Filter
+    # 5. Grep Filter
     print(c("\nFiltro de Conteúdo (Opcional):", "dim"))
     print("Exemplo: 'Error', 'POST', 'User ID', 'GLPI'")
     grep_val = input(c("Palavra-chave para filtrar (Vazio para nenhum): ", "green")).strip()
 
     # Run
-    header(f"EXIBINDO LOGS: {service.upper()} (Tail={tail_lines})")
-    if grep_val:
-        info(f"Filtro ativo: {grep_val}")
+    header(f"EXIBINDO LOGS: {service.upper()}")
+    det = []
+    if tail_lines: det.append(f"Tail={tail_lines}")
+    if since_val: det.append(f"Since={since_val}")
+    if grep_val: det.append(f"Grep='{grep_val}'")
+    if det: info("Configurações: " + " | ".join(det))
+    
     print(c("Pressione CTRL+C para encerrar e voltar ao menu.\n", "dim"))
     
     ns = argparse.Namespace(
         service=service, 
         tail=tail_lines, 
+        since=since_val,
         follow=follow, 
         grep=grep_val if grep_val else None
     )
@@ -727,6 +756,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_logs.add_argument("service", nargs="?", default="all", help="Servico ou all.")
     p_logs.add_argument("-f", "--follow", action="store_true", help="Segue logs.")
     p_logs.add_argument("--tail", type=str, default="150", help="Quantidade de linhas.")
+    p_logs.add_argument("--since", type=str, default=None, help="Filtrar por tempo (ex: 1h).")
     p_logs.add_argument("-g", "--grep", type=str, default=None, help="Filtro de conteudo.")
     p_logs.set_defaults(func=logs)
 
