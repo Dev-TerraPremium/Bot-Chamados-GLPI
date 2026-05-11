@@ -79,33 +79,91 @@ except (AttributeError, ValueError):
 
 def c(text: str, color: str) -> str:
     colors = {
-        "red": "\033[31m",
-        "green": "\033[32m",
-        "yellow": "\033[33m",
-        "cyan": "\033[36m",
+        "red": "\033[91m",
+        "green": "\033[92m",
+        "yellow": "\033[93m",
+        "blue": "\033[94m",
+        "magenta": "\033[95m",
+        "cyan": "\033[96m",
+        "white": "\033[97m",
         "bold": "\033[1m",
+        "dim": "\033[2m",
+        "underline": "\033[4m",
+        "invert": "\033[7m",
+        "bg_blue": "\033[44m",
         "reset": "\033[0m",
     }
     if not sys.stdout.isatty():
-        return text
-    return f"{colors.get(color, '')}{text}{colors['reset']}"
+        return str(text)
+    parts = color.split("+")
+    prefix = "".join(colors.get(p.strip(), "") for p in parts)
+    return f"{prefix}{text}{colors['reset']}"
+
+
+def header(text: str) -> None:
+    w = 60
+    print("\n" + c("┌" + "─"*(w-2) + "┐", "cyan+dim"))
+    print(c("│", "cyan+dim") + c(f" {text} ".center(w-2), "cyan+bold") + c("│", "cyan+dim"))
+    print(c("└" + "─"*(w-2) + "┘", "cyan+dim"))
+
+
+def banner() -> None:
+    art = r"""
+    ____        __  ______ ______ __ 
+   / __ )____  / /_/ ____//_  __// / 
+  / __  / __ \/ __/ /      / /  / /  
+ / /_/ / /_/ / /_/ /___   / /  / /___
+/_____/\____/\__/\____/  /_/  /_____/
+    """
+    print(c(art, "cyan+bold"))
+    print(c("  » ASSISTENTE DE CHAMADOS GLPI V3 «  ", "cyan+invert").center(44))
+    print(c("  Terminal de Controle Corporativo    ", "dim").center(44) + "\n")
 
 
 def info(text: str) -> None:
-    print(c(f"==> {text}", "cyan"), flush=True)
+    print(f"{c('ℹ', 'cyan')} {text}", flush=True)
 
 
 def ok(text: str) -> None:
-    print(c(f"[OK] {text}", "green"), flush=True)
+    print(f"{c('✔', 'green')} {c(text, 'green')}", flush=True)
 
 
 def warn(text: str) -> None:
-    print(c(f"[!] {text}", "yellow"), flush=True)
+    print(f"{c('⚠', 'yellow')} {c(text, 'yellow')}", flush=True)
 
 
 def fail(text: str, code: int = 1) -> None:
-    print(c(f"[ERRO] {text}", "red"), file=sys.stderr)
+    print(f"{c('✘', 'red')} {c(text, 'red+bold')}", file=sys.stderr)
     raise SystemExit(code)
+
+
+def print_table(headers_list: list[str], rows: list[list[str]], widths: list[int] | None = None) -> None:
+    if not rows:
+        return
+    if not widths:
+        widths = [max(len(str(item)) for item in col) for col in zip(headers_list, *rows)]
+    
+    sep = " " + " │ ".join("─" * w for w in widths) + " "
+    
+    # Header
+    header_str = " │ ".join(c(str(h).ljust(w), "white+bold") for h, w in zip(headers_list, widths))
+    print(" " + header_str)
+    print(c(sep, "dim"))
+    
+    # Body
+    for row in rows:
+        colored_row = []
+        for val, w in zip(row, widths):
+            clean_val = str(val)
+            cell = clean_val.ljust(w)
+            if "Up" in clean_val or "healthy" in clean_val or "running" in clean_val or "ok" in clean_val:
+                cell = c(cell, "green")
+            elif "Exited" in clean_val or "unhealthy" in clean_val or "falhou" in clean_val or "degraded" in clean_val:
+                cell = c(cell, "red")
+            elif "restarting" in clean_val or "pending" in clean_val:
+                cell = c(cell, "yellow")
+            colored_row.append(cell)
+        print(" " + " │ ".join(colored_row))
 
 
 def require_project() -> None:
@@ -193,31 +251,61 @@ def print_json(data: object) -> None:
 
 
 def status(_: argparse.Namespace | None = None) -> None:
-    info("Containers")
-    compose("ps", check=False)
-    print()
-    info("Health")
-    for path in ("/health", "/health/runtime", "/health/glpi"):
+    header("ESTADO ATUAL DO SISTEMA")
+    
+    # 1. Fetch containers nicely
+    try:
+        res = compose("ps", "--format", "json", capture=True, check=False)
+        # Docker output can be list of lines, each being a JSON
+        containers = []
+        for line in res.stdout.strip().splitlines():
+            if not line.strip(): continue
+            try:
+                j = json.loads(line)
+                if isinstance(j, list):
+                    containers.extend(j)
+                else:
+                    containers.append(j)
+            except json.JSONDecodeError:
+                continue
+        
+        if containers:
+            rows = []
+            for ct in containers:
+                name = ct.get("Name", ct.get("Names", "??"))
+                svc = ct.get("Service", "??")
+                state = ct.get("State", "??")
+                status_str = ct.get("Status", "??")
+                rows.append([svc, name, state, status_str])
+            print_table(["SERVIÇO", "NOME DO CONTAINER", "ESTADO", "DETALHE"], rows)
+        else:
+            warn("Nenhum container em execução.")
+    except Exception:
+        info("Containers (Modo Legado)")
+        compose("ps", check=False)
+
+    # 2. Health endpoints in table
+    header("RESUMO DE INTEGRAÇÕES")
+    h_rows = []
+    for name, path in [("API Backend", "/health"), ("Motor IA", "/health/runtime"), ("Integração GLPI", "/health/glpi")]:
         data = health_json(path)
         if data is None:
-            warn(f"{path}: indisponivel")
+            h_rows.append([name, path, "offline", "Conexão recusada ou indisponível"])
         else:
-            print(f"{path}:")
-            print_json(data)
-    print()
-    info("Configuracao resumida")
+            st = str(data.get("status", "unknown"))
+            detail = "OK" if st == "ok" else str(data.get("error", str(data.get("message", "Erro ou Falha"))))
+            h_rows.append([name, path, st, detail[:50]])
+    print_table(["MÓDULO", "ENDPOINT", "STATUS", "INFO"], h_rows)
+
+    # 3. Important config inline
+    header("CONFIGURAÇÃO ATIVA")
     env = read_env()
-    for key in (
-        "APP_ENV",
-        "GLPI_INTEGRATION_MODE",
-        "GLPI_BASE_URL",
-        "STATE_BACKEND",
-        "USE_CELERY_WORKERS",
-        "ALLOWED_NUMBERS",
-        "ALLOW_ALL_NUMBERS",
-        "LOG_IGNORED_MESSAGES",
-    ):
-        print(f"{key}={redact(key, env.get(key, ''))}")
+    k_list = ("APP_ENV", "GLPI_INTEGRATION_MODE", "LOCAL_LIGHT_AI_MODE", "STATE_BACKEND", "ALLOWED_NUMBERS")
+    for key in k_list:
+        val = env.get(key, c("NÃO DEFINIDO", "dim"))
+        clean_val = redact(key, str(val))
+        print(f"  {c('●', 'cyan')} " + c(key.ljust(25), "white+bold") + " : " + c(clean_val, "yellow"))
+    print()
 
 
 def up(args: argparse.Namespace) -> None:
@@ -352,16 +440,29 @@ def redis_cmd(args: argparse.Namespace) -> None:
 
 
 def doctor(_: argparse.Namespace | None = None) -> None:
-    info("Diagnostico rapido")
+    header("DIAGNÓSTICO COMPLETO DO SISTEMA")
+    
     checks = [
-        ("Projeto", PROJECT_DIR.exists()),
-        ("compose.yml", COMPOSE_FILE.exists()),
-        (".env.docker", ENV_FILE.exists()),
+        ("Raiz do Projeto", PROJECT_DIR, PROJECT_DIR.exists()),
+        ("Arquivo Compose", COMPOSE_FILE, COMPOSE_FILE.exists()),
+        ("Arquivo Env Vars", ENV_FILE, ENV_FILE.exists()),
     ]
-    for name, passed in checks:
-        print(f"{name}: {'ok' if passed else 'falhou'}")
+    
+    d_rows = []
+    for label, path, exists in checks:
+        status_txt = "ok" if exists else "falhou"
+        detail = str(path) if exists else "NÃO ENCONTRADO"
+        d_rows.append([label, status_txt, detail])
+        
+    print_table(["RECURSO", "ESTADO", "CAMINHO / NOTA"], d_rows)
     print()
-    run(["docker", "info", "--format", "Docker: {{.ServerVersion}} / driver {{.Driver}}"], check=False)
+    
+    info("Versão do Daemon do Docker:")
+    try:
+        run(["docker", "info", "--format", "  - Engine: {{.ServerVersion}}\n  - Driver: {{.Driver}}\n  - CPUs: {{.NCPU}}\n  - Memória: {{.MemTotal}} bytes"], check=False)
+    except Exception:
+        pass
+        
     print()
     status(None)
 
@@ -379,41 +480,73 @@ def confirm(question: str) -> bool:
 
 
 def interactive(_: argparse.Namespace | None = None) -> None:
-    actions = {
-        "1": ("Status geral", lambda: status(None)),
-        "2": ("Subir stack", lambda: up(argparse.Namespace(build=False, services=[]))),
-        "3": ("Rebuild + subir stack", lambda: up(argparse.Namespace(build=True, services=[]))),
-        "4": ("Reiniciar WhatsApp", lambda: restart(argparse.Namespace(services=["whatsapp"]))),
-        "5": ("Logs WhatsApp ao vivo / QR", lambda: qr(argparse.Namespace())),
-        "6": ("Logs Web", lambda: logs(argparse.Namespace(service="web", follow=False, tail=160))),
-        "7": ("Ver allowlist", lambda: allowlist(argparse.Namespace(allow_action="show"))),
-        "8": ("Adicionar numero na allowlist", menu_add_allowlist),
-        "9": ("Remover vinculo de autenticacao", menu_delete_link),
-        "10": ("Descer stack", lambda: down(argparse.Namespace(volumes=False, yes=False))),
-        "11": ("Diagnostico completo", lambda: doctor(None)),
-        "12": ("Manual de Configuração (.env)", lambda: config_docs(None)),
-        "0": ("Sair", None),
+    banner()
+    
+    # Logical grouping definition
+    layout = {
+        "📊 TELEMETRIA & STATUS": {
+            "1": ("Visualizar Status Geral", lambda: status(None)),
+            "11": ("Diagnóstico de Infraestrutura", lambda: doctor(None)),
+            "6": ("Últimos Logs do Servidor Web", lambda: logs(argparse.Namespace(service="web", follow=False, tail=160))),
+        },
+        "⚡ CONTROLE DA STACK": {
+            "2": ("Ligar Todos os Serviços", lambda: up(argparse.Namespace(build=False, services=[]))),
+            "3": ("Reconstruir (Build) + Ligar", lambda: up(argparse.Namespace(build=True, services=[]))),
+            "4": ("Reiniciar Serviço WhatsApp", lambda: restart(argparse.Namespace(services=["whatsapp"]))),
+            "10": ("Desligar e Parar stack", lambda: down(argparse.Namespace(volumes=False, yes=False))),
+        },
+        "💬 CANAL WHATSAPP": {
+            "5": ("Visualizar QR Code Ativo", lambda: qr(argparse.Namespace())),
+            "7": ("Consultar Firewall/Allowlist", lambda: allowlist(argparse.Namespace(allow_action="show"))),
+            "8": ("Liberar Novo Telefone (Allowlist)", menu_add_allowlist),
+            "9": ("Excluir Vínculo de Autenticação", menu_delete_link),
+        },
+        "📚 SISTEMA": {
+            "12": ("Manual Técnico de Parâmetros", lambda: config_docs(None)),
+        }
     }
+
+    # Flatten lookup for efficiency
+    actions = {}
+    for g in layout.values():
+        actions.update(g)
+
     while True:
-        print()
-        print(c("Bot-Chamados-GLPI - painel terminal", "bold"))
-        for key, (label, _) in actions.items():
-            print(f"{key}. {label}")
-        choice = input("Escolha: ").strip()
-        if choice == "0":
+        print(c("═"*60, "dim"))
+        
+        for group_title, items in layout.items():
+            print(c(f"\n {group_title} ", "white+bg_blue"))
+            for k, (label, _) in items.items():
+                # Align double digit numbers cleanly
+                idx = k.rjust(2)
+                print(f"  {c(idx, 'cyan+bold')} {c('→', 'dim')} {label}")
+        
+        print(c("\n  0 → Sair do Terminal\n", "red+dim"))
+        
+        try:
+            choice = input(c("Digite o comando e aperte Enter ❯ ", "green+bold")).strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nSaindo...")
             return
+            
+        if choice == "0" or choice.lower() in ('q', 'exit', 'quit'):
+            print(c("Operação encerrada pelo operador.", "dim"))
+            return
+
         action = actions.get(choice)
         if not action:
-            warn("Opcao invalida.")
+            warn("Comando desconhecido. Tente novamente.")
             continue
+
         print()
         try:
             action[1]()
         except KeyboardInterrupt:
             print()
-            warn("Interrompido.")
+            warn("Interrupção forçada pelo usuário.")
         except subprocess.CalledProcessError as exc:
-            fail(f"Comando falhou: {shlex.join(exc.cmd)}", code=1)
+            fail(f"Falha ao executar rotina: {shlex.join(exc.cmd)}", code=1)
+        print("\n" + c("─"*60, "dim"))
 
 
 def menu_add_allowlist() -> None:
