@@ -30,12 +30,12 @@ SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "redis", "ollama")
 SECRET_NAMES = ("TOKEN", "PASSWORD", "PASS", "SECRET", "PEPPER")
 
 CONFIG_MANUAL = {
-    "🌐 Sistema e Ambiente": {
+    "Sistema e Ambiente": {
         "APP_ENV": "Ambiente de execução: 'production' ativa validações críticas, 'local' ou 'dev' relaxam restrições.",
         "APP_NAME": "Nome do bot exibido no cabeçalho e nas mensagens de boas vindas.",
         "EXPOSE_DEBUG_ROUTES": "Habilita rotas administrativas /health, /docs e simulações de tela (WebUI).",
     },
-    "⚙️ Integração GLPI": {
+    "Integracao GLPI": {
         "GLPI_INTEGRATION_MODE": "Modo de operação: 'real' (conecta na API) ou 'mock' (simula operações sem alterar o GLPI).",
         "GLPI_BASE_URL": "URL base da API do GLPI (deve terminar em /apirest.php).",
         "GLPI_APP_TOKEN": "App-Token da API habilitada nas configurações do GLPI.",
@@ -44,7 +44,7 @@ CONFIG_MANUAL = {
         "GLPI_DEFAULT_PROFILE_ID": "ID do Perfil padrão para acesso (Self-Service / Requerente).",
         "GLPI_TICKET_PUBLIC_URL_TEMPLATE": "Template de URL para criar links clicáveis do ticket (ex: https://url.com/index.php?redirect=ticket_{id}).",
     },
-    "🤖 Inteligência Artificial & Triage": {
+    "Inteligencia Artificial & Triage": {
         "LOCAL_LIGHT_AI_MODE": "Provedor de IA: 'generative_google' (Gemini - nuvem) ou 'generative_ollama' (Processamento Local).",
         "GOOGLE_AI_API_KEY": "Chave de API da Google para rodar o modelo Gemini (Gratuito/Pago dependendo da cota).",
         "LOCAL_OLLAMA_ENABLED": "Ativa/Desativa o container Ollama local no Docker (consome muita CPU/RAM se ligado).",
@@ -52,19 +52,19 @@ CONFIG_MANUAL = {
         "AI_MAX_CLARIFICATION_QUESTIONS": "Limite máximo de perguntas que o robô fará antes de aceitar a descrição final.",
         "AI_MAX_INPUT_CHARS": "Proteção de contexto da IA: trunca o input do usuário se passar deste tamanho.",
     },
-    "🔐 Segurança & Autenticação": {
+    "Seguranca & Autenticacao": {
         "CHANNEL_LINKING_MODE": "Define como vincular WhatsApp e Login: 'real' busca CPF no GLPI, 'mock' aceita dados genéricos.",
         "CHANNEL_LINK_HMAC_PEPPER": "String secreta única para embaralhar o hash de autenticação dos celulares.",
         "ALLOWED_NUMBERS": "Filtro de firewall: Apenas estes números com DDD separados por vírgula conseguem falar com o bot.",
         "ALLOW_ALL_NUMBERS": "Desliga o firewall de números se 'true', permitindo uso corporativo irrestrito.",
     },
-    "⚡ Infraestrutura (Redis/Celery)": {
+    "Infraestrutura (Redis/Celery)": {
         "STATE_BACKEND": "Onde guardar o estado da conversa: 'redis' (ideal produção) ou 'memory' (não escala).",
         "USE_CELERY_WORKERS": "Processamento em segundo plano das mensagens, melhora a estabilidade da API (obrigatório em prod).",
         "REDIS_URL": "Endpoint principal de cache e sessões ativas dos usuários.",
         "AI_QUEUE_NAME": "Nome da fila de processamento exclusivo para demandas da Inteligência Artificial.",
     },
-    "📢 Notificações Ativas": {
+    "Notificacoes Ativas": {
         "TICKET_NOTIFICATIONS_ENABLED": "Habilita o Worker que monitora mudanças no GLPI e avisa o usuário no WhatsApp.",
         "TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS": "De quanto em quanto tempo o bot consulta mudanças no banco/API do GLPI.",
         "WHATSAPP_INTERNAL_API_TOKEN": "Chave de autenticação interna que permite ao backend web enviar mensagens usando o container do Go.",
@@ -120,20 +120,24 @@ def banner() -> None:
     print(c("  Terminal de Controle Corporativo    ", "dim").center(44) + "\n")
 
 
+def clear_screen() -> None:
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+
 def info(text: str) -> None:
-    print(f"{c('ℹ', 'cyan')} {text}", flush=True)
+    print(f"{c('[i]', 'cyan')} {text}", flush=True)
 
 
 def ok(text: str) -> None:
-    print(f"{c('✔', 'green')} {c(text, 'green')}", flush=True)
+    print(f"{c('[+]', 'green')} {c(text, 'green')}", flush=True)
 
 
 def warn(text: str) -> None:
-    print(f"{c('⚠', 'yellow')} {c(text, 'yellow')}", flush=True)
+    print(f"{c('[!]', 'yellow')} {c(text, 'yellow')}", flush=True)
 
 
 def fail(text: str, code: int = 1) -> None:
-    print(f"{c('✘', 'red')} {c(text, 'red+bold')}", file=sys.stderr)
+    print(f"{c('[x]', 'red')} {c(text, 'red+bold')}", file=sys.stderr)
     raise SystemExit(code)
 
 
@@ -304,7 +308,7 @@ def status(_: argparse.Namespace | None = None) -> None:
     for key in k_list:
         val = env.get(key, c("NÃO DEFINIDO", "dim"))
         clean_val = redact(key, str(val))
-        print(f"  {c('●', 'cyan')} " + c(key.ljust(25), "white+bold") + " : " + c(clean_val, "yellow"))
+        print(f"  {c('>', 'cyan')} " + c(key.ljust(25), "white+bold") + " : " + c(clean_val, "yellow"))
     print()
 
 
@@ -480,29 +484,28 @@ def confirm(question: str) -> bool:
 
 
 def interactive(_: argparse.Namespace | None = None) -> None:
-    banner()
-    
     # Logical grouping definition
     layout = {
-        "📊 TELEMETRIA & STATUS": {
+        "TELEMETRIA & STATUS": {
             "1": ("Visualizar Status Geral", lambda: status(None)),
             "11": ("Diagnóstico de Infraestrutura", lambda: doctor(None)),
             "6": ("Últimos Logs do Servidor Web", lambda: logs(argparse.Namespace(service="web", follow=False, tail=160))),
         },
-        "⚡ CONTROLE DA STACK": {
+        "CONTROLE DA STACK": {
             "2": ("Ligar Todos os Serviços", lambda: up(argparse.Namespace(build=False, services=[]))),
             "3": ("Reconstruir (Build) + Ligar", lambda: up(argparse.Namespace(build=True, services=[]))),
             "4": ("Reiniciar Serviço WhatsApp", lambda: restart(argparse.Namespace(services=["whatsapp"]))),
             "10": ("Desligar e Parar stack", lambda: down(argparse.Namespace(volumes=False, yes=False))),
         },
-        "💬 CANAL WHATSAPP": {
+        "CANAL WHATSAPP": {
             "5": ("Visualizar QR Code Ativo", lambda: qr(argparse.Namespace())),
             "7": ("Consultar Firewall/Allowlist", lambda: allowlist(argparse.Namespace(allow_action="show"))),
             "8": ("Liberar Novo Telefone (Allowlist)", menu_add_allowlist),
             "9": ("Excluir Vínculo de Autenticação", menu_delete_link),
         },
-        "📚 SISTEMA": {
+        "SISTEMA": {
             "12": ("Manual Técnico de Parâmetros", lambda: config_docs(None)),
+            "cls": ("Limpar Tela do Console", clear_screen),
         }
     }
 
@@ -512,41 +515,48 @@ def interactive(_: argparse.Namespace | None = None) -> None:
         actions.update(g)
 
     while True:
+        clear_screen()
+        banner()
         print(c("═"*60, "dim"))
         
         for group_title, items in layout.items():
             print(c(f"\n {group_title} ", "white+bg_blue"))
             for k, (label, _) in items.items():
-                # Align double digit numbers cleanly
-                idx = k.rjust(2)
-                print(f"  {c(idx, 'cyan+bold')} {c('→', 'dim')} {label}")
+                # Align keys cleanly
+                idx = k.rjust(3)
+                print(f"  {c(idx, 'cyan+bold')} {c('->', 'dim')} {label}")
         
-        print(c("\n  0 → Sair do Terminal\n", "red+dim"))
+        print(c("\n  0 -> Sair do Terminal\n", "red+dim"))
         
         try:
-            choice = input(c("Digite o comando e aperte Enter ❯ ", "green+bold")).strip()
+            choice = input(c("Digite o comando ❯ ", "green+bold")).strip()
         except (KeyboardInterrupt, EOFError):
             print("\nSaindo...")
             return
             
         if choice == "0" or choice.lower() in ('q', 'exit', 'quit'):
-            print(c("Operação encerrada pelo operador.", "dim"))
+            clear_screen()
+            print(c("Operacao encerrada.", "dim"))
             return
 
         action = actions.get(choice)
         if not action:
-            warn("Comando desconhecido. Tente novamente.")
+            warn("Opcao invalida.")
+            input("\nPressione Enter para continuar...")
             continue
 
-        print()
+        clear_screen()
+        header(f"Executando: {choice}")
         try:
             action[1]()
         except KeyboardInterrupt:
             print()
-            warn("Interrupção forçada pelo usuário.")
+            warn("Interrompido pelo usuario.")
         except subprocess.CalledProcessError as exc:
-            fail(f"Falha ao executar rotina: {shlex.join(exc.cmd)}", code=1)
+            fail(f"Falha: {shlex.join(exc.cmd)}", code=1)
+        
         print("\n" + c("─"*60, "dim"))
+        input(c("\nPressione Enter para voltar ao menu...", "dim"))
 
 
 def menu_add_allowlist() -> None:
@@ -568,14 +578,14 @@ def config_docs(_: argparse.Namespace | None = None) -> None:
     env_atual = read_env()
 
     for group, variables in CONFIG_MANUAL.items():
-        print(c(f"\n▶ {group}", "cyan"))
+        print(c(f"\n> {group}", "cyan"))
         print(c("-" * len(group) * 2, "cyan"))
         
         for var, description in variables.items():
-            status_icon = c("●", "green") if var in env_atual else c("○", "red")
+            status_icon = c("[+]", "green") if var in env_atual else c("[ ]", "red")
             print(f" {status_icon} " + c(f"{var}", "bold"))
-            print(f"    Descrição: {description}")
-            current_val = redact(var, env_atual.get(var, "NÃO DEFINIDO"))
+            print(f"    Descricao: {description}")
+            current_val = redact(var, env_atual.get(var, "NAO DEFINIDO"))
             print(f"    Valor Atual: " + c(current_val, "yellow" if var in env_atual else "red"))
             print()
     
