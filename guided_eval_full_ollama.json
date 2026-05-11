@@ -1,0 +1,962 @@
+{
+  "start": 0,
+  "count": 30,
+  "passed": 14,
+  "results": [
+    {
+      "name": "vago_computador",
+      "initial_description": "Estou com problema no computador",
+      "question_count": 2,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "Estou com problema no computador E no notebook do financeiro Aparece tela azul ao iniciar.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "E no notebook do financeiro.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "Aparece tela azul ao iniciar.",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "vago_sistema",
+      "initial_description": "Estou com problema em um sistema",
+      "question_count": 2,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "Estou com problema em um sistema Ele fecha toda hora quando tento usar Acontece no Outlook.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "Ele fecha toda hora quando tento usar.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "Acontece no Outlook.",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "email_bloqueado",
+      "initial_description": "Nao consigo acessar meu email no Outlook.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "Nao consigo acessar meu email no Outlook pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "impressora_pdf",
+      "initial_description": "A impressora do fiscal nao imprime PDF.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "A impressora do fiscal nao imprime PDF.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "wifi_deposito",
+      "initial_description": "O Wi-Fi do deposito esta caindo desde hoje cedo.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "O Wi-Fi do deposito esta caindo desde hoje cedo.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": false,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "internet_lenta",
+      "initial_description": "A internet esta muito lenta na matriz do financeiro.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "A internet esta muito lenta na matriz do financeiro pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "acesso_portal_compras",
+      "initial_description": "Preciso de acesso ao portal de compras.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso de acesso ao portal de compras.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "instalacao_teams",
+      "initial_description": "Preciso instalar o Teams no notebook novo.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso instalar o Teams no notebook novo.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "notebook_nao_liga",
+      "initial_description": "Meu notebook nao liga depois da atualizacao de ontem.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "Meu notebook nao liga depois da atualizacao de ontem.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "ramal_generico",
+      "initial_description": "Estou com problema no ramal.",
+      "question_count": 5,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "Estou com problema no ramal Nao completa ligacao e fica mudo Acontece no ramal 214 pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "Nao completa ligacao e fica mudo.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "Acontece no ramal 214.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "app_generico",
+      "initial_description": "Um aplicativo esta com problema.",
+      "question_count": 2,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "Um aplicativo esta com problema Ele fecha toda hora quando tento abrir Isso acontece no Teams.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "Ele fecha toda hora quando tento abrir.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "Isso acontece no Teams.",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "impressora_etiqueta",
+      "initial_description": "Nao consigo imprimir etiqueta na expedicao.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "Nao consigo imprimir etiqueta na expedicao Acontece na Zebra da expedicao pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "Acontece na Zebra da expedicao.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "vpn_desconecta",
+      "initial_description": "A VPN desconecta toda hora quando trabalho de casa.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "A VPN desconecta toda hora quando trabalho de casa.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "programa_emitir_nota",
+      "initial_description": "O programa trava quando clico em emitir nota.",
+      "question_count": 1,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "O programa trava quando clico em emitir nota Acontece no Solution.",
+      "transcript": [
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "Acontece no Solution.",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "camera_offline",
+      "initial_description": "A camera do patio esta offline.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "A camera do patio esta offline pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "troca_mouse",
+      "initial_description": "Preciso trocar um mouse quebrado.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso trocar um mouse quebrado.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "arquivo_rede",
+      "initial_description": "Nao consigo abrir um arquivo na rede.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "Nao consigo abrir um arquivo na rede Acontece na pasta do comercial pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "Acontece na pasta do comercial.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "usuario_bloqueado",
+      "initial_description": "Meu usuario esta bloqueado.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "Meu usuario esta bloqueado.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": false,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "whatsapp_web",
+      "initial_description": "O WhatsApp Web nao abre no Chrome.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "O WhatsApp Web nao abre no Chrome.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "erp_lento",
+      "initial_description": "O ERP esta lento no faturamento.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "O ERP esta lento no faturamento.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "scanner_email",
+      "initial_description": "O scanner nao envia para email.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "O scanner nao envia para email.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": false,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "acesso_financeiro_compras",
+      "initial_description": "Preciso de acesso aos modulos financeiro e compras.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso de acesso aos modulos financeiro e compras.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "toner",
+      "initial_description": "A impressora do RH esta sem toner.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "A impressora do RH esta sem toner pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "salvar_pedido",
+      "initial_description": "Nao consigo salvar pedido.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "Nao consigo salvar pedido Acontece no sistema comercial pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "Acontece no sistema comercial.",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "tela_piscando",
+      "initial_description": "Minha tela fica piscando o dia todo.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "Minha tela fica piscando o dia todo pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "erro_500_portal",
+      "initial_description": "Recebo erro 500 ao acessar o portal.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "Recebo erro 500 ao acessar o portal.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": false,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "login_glpi",
+      "initial_description": "Meu login do GLPI nao funciona.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "Meu login do GLPI nao funciona.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "office_licenca",
+      "initial_description": "Preciso ativar a licenca do Office no notebook novo.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso ativar a licenca do Office no notebook novo pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "portal_fecha",
+      "initial_description": "O portal fecha sozinho quando tento abrir um chamado.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        2
+      ],
+      "final_summary": "O portal fecha sozinho quando tento abrir um chamado.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": false,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "rede_unidade",
+      "initial_description": "A rede da unidade de Rondonopolis caiu.",
+      "question_count": 5,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "A rede da unidade de Rondonopolis caiu pular pular pular pular pular.",
+      "transcript": [
+        {
+          "question": "Poderia me detalhar o que esta acontecendo exatamente e qual comportamento voce percebe?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual erro aparece ou o que acontece exatamente quando voce tenta usar isso?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Poderia me detalhar qual item, sistema, equipamento ou processo esta sendo afetado?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo, sistema ou funcionalidade exatamente esta apresentando esse comportamento?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        },
+        {
+          "question": "Qual aplicativo ou sistema exatamente esta falhando?",
+          "answer": "pular",
+          "backend": "local-guided-question"
+        }
+      ],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": false,
+      "stopped_reason": "ready"
+    }
+  ]
+}

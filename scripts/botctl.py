@@ -29,6 +29,48 @@ DEFAULT_HEALTH_URL = "http://127.0.0.1:8000"
 SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "redis", "ollama")
 SECRET_NAMES = ("TOKEN", "PASSWORD", "PASS", "SECRET", "PEPPER")
 
+CONFIG_MANUAL = {
+    "🌐 Sistema e Ambiente": {
+        "APP_ENV": "Ambiente de execução: 'production' ativa validações críticas, 'local' ou 'dev' relaxam restrições.",
+        "APP_NAME": "Nome do bot exibido no cabeçalho e nas mensagens de boas vindas.",
+        "EXPOSE_DEBUG_ROUTES": "Habilita rotas administrativas /health, /docs e simulações de tela (WebUI).",
+    },
+    "⚙️ Integração GLPI": {
+        "GLPI_INTEGRATION_MODE": "Modo de operação: 'real' (conecta na API) ou 'mock' (simula operações sem alterar o GLPI).",
+        "GLPI_BASE_URL": "URL base da API do GLPI (deve terminar em /apirest.php).",
+        "GLPI_APP_TOKEN": "App-Token da API habilitada nas configurações do GLPI.",
+        "GLPI_USER_TOKEN": "Token pessoal da conta que o bot usará para registrar chamados no GLPI.",
+        "GLPI_DEFAULT_ENTITY_ID": "ID da Entidade raiz/destino para novos usuários e tickets no GLPI.",
+        "GLPI_DEFAULT_PROFILE_ID": "ID do Perfil padrão para acesso (Self-Service / Requerente).",
+        "GLPI_TICKET_PUBLIC_URL_TEMPLATE": "Template de URL para criar links clicáveis do ticket (ex: https://url.com/index.php?redirect=ticket_{id}).",
+    },
+    "🤖 Inteligência Artificial & Triage": {
+        "LOCAL_LIGHT_AI_MODE": "Provedor de IA: 'generative_google' (Gemini - nuvem) ou 'generative_ollama' (Processamento Local).",
+        "GOOGLE_AI_API_KEY": "Chave de API da Google para rodar o modelo Gemini (Gratuito/Pago dependendo da cota).",
+        "LOCAL_OLLAMA_ENABLED": "Ativa/Desativa o container Ollama local no Docker (consome muita CPU/RAM se ligado).",
+        "AI_GUIDED_DETAILING_ENABLED": "Habilita a IA a fazer perguntas dinâmicas de acompanhamento para enriquecer o relato.",
+        "AI_MAX_CLARIFICATION_QUESTIONS": "Limite máximo de perguntas que o robô fará antes de aceitar a descrição final.",
+        "AI_MAX_INPUT_CHARS": "Proteção de contexto da IA: trunca o input do usuário se passar deste tamanho.",
+    },
+    "🔐 Segurança & Autenticação": {
+        "CHANNEL_LINKING_MODE": "Define como vincular WhatsApp e Login: 'real' busca CPF no GLPI, 'mock' aceita dados genéricos.",
+        "CHANNEL_LINK_HMAC_PEPPER": "String secreta única para embaralhar o hash de autenticação dos celulares.",
+        "ALLOWED_NUMBERS": "Filtro de firewall: Apenas estes números com DDD separados por vírgula conseguem falar com o bot.",
+        "ALLOW_ALL_NUMBERS": "Desliga o firewall de números se 'true', permitindo uso corporativo irrestrito.",
+    },
+    "⚡ Infraestrutura (Redis/Celery)": {
+        "STATE_BACKEND": "Onde guardar o estado da conversa: 'redis' (ideal produção) ou 'memory' (não escala).",
+        "USE_CELERY_WORKERS": "Processamento em segundo plano das mensagens, melhora a estabilidade da API (obrigatório em prod).",
+        "REDIS_URL": "Endpoint principal de cache e sessões ativas dos usuários.",
+        "AI_QUEUE_NAME": "Nome da fila de processamento exclusivo para demandas da Inteligência Artificial.",
+    },
+    "📢 Notificações Ativas": {
+        "TICKET_NOTIFICATIONS_ENABLED": "Habilita o Worker que monitora mudanças no GLPI e avisa o usuário no WhatsApp.",
+        "TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS": "De quanto em quanto tempo o bot consulta mudanças no banco/API do GLPI.",
+        "WHATSAPP_INTERNAL_API_TOKEN": "Chave de autenticação interna que permite ao backend web enviar mensagens usando o container do Go.",
+    }
+}
+
 try:
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 except (AttributeError, ValueError):
@@ -349,6 +391,7 @@ def interactive(_: argparse.Namespace | None = None) -> None:
         "9": ("Remover vinculo de autenticacao", menu_delete_link),
         "10": ("Descer stack", lambda: down(argparse.Namespace(volumes=False, yes=False))),
         "11": ("Diagnostico completo", lambda: doctor(None)),
+        "12": ("Manual de Configuração (.env)", lambda: config_docs(None)),
         "0": ("Sair", None),
     }
     while True:
@@ -383,6 +426,29 @@ def menu_delete_link() -> None:
     redis_cmd(argparse.Namespace(redis_action="delete-link", phone=number))
 
 
+def config_docs(_: argparse.Namespace | None = None) -> None:
+    print(c("\n" + "="*60, "bold"))
+    print(c(" MANUAL DE PARAMETRIZAÇÃO - ARQUIVO .env.docker ", "bold"))
+    print(c("="*60, "bold"))
+    print("\nConsulte este guia para entender o que cada variável altera no comportamento do bot.\n")
+
+    env_atual = read_env()
+
+    for group, variables in CONFIG_MANUAL.items():
+        print(c(f"\n▶ {group}", "cyan"))
+        print(c("-" * len(group) * 2, "cyan"))
+        
+        for var, description in variables.items():
+            status_icon = c("●", "green") if var in env_atual else c("○", "red")
+            print(f" {status_icon} " + c(f"{var}", "bold"))
+            print(f"    Descrição: {description}")
+            current_val = redact(var, env_atual.get(var, "NÃO DEFINIDO"))
+            print(f"    Valor Atual: " + c(current_val, "yellow" if var in env_atual else "red"))
+            print()
+    
+    print(c("\nPara alterar um valor use: botctl env set [NOME] [VALOR]", "cyan"))
+
+
 def show_help(_: argparse.Namespace | None = None) -> None:
     print(c("\n--- GUIA RAPIDO DE COMANDOS - botctl ---\n", "bold"))
     print("O `botctl` e o painel de controle do Bot de Chamados no Proxmox.\n")
@@ -405,6 +471,7 @@ def show_help(_: argparse.Namespace | None = None) -> None:
     print("  botctl env show                    Lista todas as variaveis de ambiente ativas.")
     print("  botctl env get [CHAVE]             Exibe o valor de uma chave especifica.")
     print("  botctl env set [CHAVE] [VALOR]     Define o valor de uma chave no .env.docker.")
+    print("  botctl config-docs                 Exibe o manual detalhado com descrições de cada parâmetro.")
     print()
     print(c("Controle de Acesso (Allowlist):", "cyan"))
     print("  botctl allowlist show              Mostra numeros permitidos e status do bloqueio.")
@@ -431,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("doctor", help="Diagnostico completo.").set_defaults(func=doctor)
     sub.add_parser("menu", help="Abre menu interativo.").set_defaults(func=interactive)
     sub.add_parser("help", help="Mostra o guia rápido de comandos.").set_defaults(func=show_help)
+    sub.add_parser("config-docs", help="Manual detalhado do .env.").set_defaults(func=config_docs)
 
     p_up = sub.add_parser("up", help="Sobe a stack.")
     p_up.add_argument("--build", action="store_true", help="Rebuild das imagens.")

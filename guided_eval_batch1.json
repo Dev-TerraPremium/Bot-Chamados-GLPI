@@ -1,0 +1,217 @@
+{
+  "start": 0,
+  "count": 10,
+  "passed": 2,
+  "results": [
+    {
+      "name": "vago_computador",
+      "initial_description": "Estou com problema no computador",
+      "question_count": 0,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "vago_sistema",
+      "initial_description": "Estou com problema em um sistema",
+      "question_count": 0,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "email_bloqueado",
+      "initial_description": "Nao consigo acessar meu email no Outlook.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "impressora_pdf",
+      "initial_description": "A impressora do fiscal nao imprime PDF.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "wifi_deposito",
+      "initial_description": "O Wi-Fi do deposito esta caindo desde hoje cedo.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "internet_lenta",
+      "initial_description": "A internet esta muito lenta na matriz do financeiro.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "acesso_portal_compras",
+      "initial_description": "Preciso de acesso ao portal de compras.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso de acesso ao portal de compras.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "instalacao_teams",
+      "initial_description": "Preciso instalar o Teams no notebook novo.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        0
+      ],
+      "final_summary": "Preciso instalar o Teams no notebook novo.",
+      "transcript": [],
+      "checks": {
+        "range_pass": true,
+        "keyword_pass": true,
+        "duplicate_pass": true,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": true
+      },
+      "passed": true,
+      "stopped_reason": "ready"
+    },
+    {
+      "name": "notebook_nao_liga",
+      "initial_description": "Meu notebook nao liga depois da atualizacao de ontem.",
+      "question_count": 0,
+      "expected_question_range": [
+        0,
+        1
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    },
+    {
+      "name": "ramal_generico",
+      "initial_description": "Estou com problema no ramal.",
+      "question_count": 0,
+      "expected_question_range": [
+        1,
+        2
+      ],
+      "final_summary": "",
+      "transcript": [],
+      "checks": {
+        "range_pass": false,
+        "keyword_pass": false,
+        "duplicate_pass": false,
+        "question_limit_pass": true,
+        "safe_questions_pass": true,
+        "final_summary_present": false
+      },
+      "passed": false,
+      "stopped_reason": "ai_unavailable:Nao foi possivel acionar a IA generativa Google."
+    }
+  ]
+}
