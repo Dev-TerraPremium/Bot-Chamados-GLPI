@@ -61,6 +61,7 @@ var whatsappBoldRegex = regexp.MustCompile(`\*\*(.+?)\*\*`)
 var stateMu sync.Mutex
 var lastBotStateBySender = map[string]string{}
 var waitMessageIndexBySender = map[string]int{}
+var sendTargetByPhoneVariant = map[string]types.JID{}
 var workerMu sync.Mutex
 var senderWorkers = map[string]chan inboundMessage{}
 
@@ -344,6 +345,28 @@ func setLastBotState(senderPhone string, state string) {
 	lastBotStateBySender[senderPhone] = state
 }
 
+func rememberSendTarget(senderPhone string, target types.JID) {
+	if target.IsEmpty() {
+		return
+	}
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	for _, variant := range phoneVariants(senderPhone) {
+		sendTargetByPhoneVariant[variant] = target
+	}
+}
+
+func rememberedSendTarget(phone string) types.JID {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	for _, variant := range phoneVariants(phone) {
+		if target, ok := sendTargetByPhoneVariant[variant]; ok && !target.IsEmpty() {
+			return target
+		}
+	}
+	return types.JID{}
+}
+
 func nextSlowProcessingMessage(senderPhone string) string {
 	stateMu.Lock()
 	defer stateMu.Unlock()
@@ -397,10 +420,10 @@ func normalizeWhatsAppText(text string) string {
 	return normalized
 }
 
-func sendPlainText(ctx context.Context, target types.JID, text string) {
+func sendPlainText(ctx context.Context, target types.JID, text string) error {
 	normalized := normalizeWhatsAppText(text)
 	if normalized == "" {
-		return
+		return nil
 	}
 	_, err := client.SendMessage(ctx, target, &waE2E.Message{
 		Conversation: proto.String(normalized),
@@ -408,17 +431,31 @@ func sendPlainText(ctx context.Context, target types.JID, text string) {
 	if err != nil {
 		fmt.Println("Erro ao enviar mensagem no WhatsApp:", err)
 	}
+	return err
 }
 
-func outboundJIDFromPhone(phone string) types.JID {
-	digits := digitsOnly.ReplaceAllString(phone, "")
-	if digits == "" {
-		return types.JID{}
+func outboundJIDsFromPhone(phone string) []types.JID {
+	remembered := rememberedSendTarget(phone)
+	if !remembered.IsEmpty() {
+		return []types.JID{remembered}
 	}
-	if !strings.HasPrefix(digits, "55") {
-		digits = "55" + digits
+	var jids []types.JID
+	seen := map[string]bool{}
+	for _, variant := range phoneVariants(phone) {
+		digits := digitsOnly.ReplaceAllString(variant, "")
+		if digits == "" {
+			continue
+		}
+		if !strings.HasPrefix(digits, "55") {
+			digits = "55" + digits
+		}
+		if seen[digits] {
+			continue
+		}
+		seen[digits] = true
+		jids = append(jids, types.NewJID(digits, types.DefaultUserServer))
 	}
-	return types.NewJID(digits, types.DefaultUserServer)
+	return jids
 }
 
 func startOutboundServer() *http.Server {
@@ -442,12 +479,22 @@ func startOutboundServer() *http.Server {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
-		target := outboundJIDFromPhone(payload.Phone)
-		if target.IsEmpty() || strings.TrimSpace(payload.Message) == "" {
+		targets := outboundJIDsFromPhone(payload.Phone)
+		if len(targets) == 0 || strings.TrimSpace(payload.Message) == "" {
 			http.Error(w, "phone and message are required", http.StatusBadRequest)
 			return
 		}
-		sendPlainText(r.Context(), target, payload.Message)
+		var sent bool
+		for _, target := range targets {
+			if err := sendPlainText(r.Context(), target, payload.Message); err == nil {
+				sent = true
+				break
+			}
+		}
+		if !sent {
+			http.Error(w, "send failed", http.StatusBadGateway)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -580,6 +627,7 @@ func eventHandler(evt interface{}) {
 		if sendTarget.IsEmpty() {
 			sendTarget = v.Info.Sender
 		}
+		rememberSendTarget(senderPhone, sendTarget)
 
 		mediaPayload := collectMediaPayloads(context.Background(), v.Message, v.Info.ID)
 		if hasSupportedMedia(v.Message) && len(mediaPayload) == 0 {
