@@ -35,6 +35,7 @@ def build_notification_pipeline(
     dispatcher = WhatsAppNotificationDispatcher(
         base_url=settings.whatsapp_outbound_base_url,
         internal_token=settings.whatsapp_internal_api_token,
+        timeout_seconds=settings.ticket_notification_dispatch_timeout_seconds,
     )
     return TicketNotificationPipeline(
         settings=settings,

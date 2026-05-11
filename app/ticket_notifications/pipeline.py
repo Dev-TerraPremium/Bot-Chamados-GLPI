@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from redis import Redis
 
@@ -47,6 +48,7 @@ class TicketNotificationPipeline:
             "watched": 0,
             "captured": 0,
             "sent": 0,
+            "sent_internal": 0,
             "ignored": 0,
             "failed": 0,
         }
@@ -73,12 +75,17 @@ class TicketNotificationPipeline:
     def _process_ticket(self, watched_ticket, summary: dict[str, int]) -> None:
         try:
             snapshot = self.event_reader.read_snapshot(watched_ticket.ticket_id)
-        except GLPIClientError:
+        except GLPIClientError as exc:
             self.metrics.increment("glpi_read_failures")
             summary["failed"] += 1
             logger.warning(
                 "ticket_notification_glpi_read_failed",
                 extra={"ticket_id": watched_ticket.ticket_id},
+            )
+            self._send_error_alert(
+                reason="falha ao consultar o GLPI",
+                ticket_id=watched_ticket.ticket_id,
+                detail=str(exc),
             )
             return
 
@@ -95,25 +102,128 @@ class TicketNotificationPipeline:
                     extra={"ticket_id": event.ticket_id, "event_type": event.event_type},
                 )
                 continue
-            if not watched_ticket.requester_phone:
+            internal_numbers = self._internal_update_numbers()
+            if not watched_ticket.requester_phone and not internal_numbers:
                 summary["ignored"] += 1
                 self.metrics.increment("events_ignored_without_phone")
                 continue
 
-            message = self.renderer.render_user_message(watched_ticket, event)
-            result = self.dispatcher.send_message(watched_ticket.requester_phone, message)
-            if result.ok:
-                summary["sent"] += 1
-                self.metrics.increment("events_sent")
-                logger.info(
-                    "ticket_notification_event_sent",
-                    extra={"ticket_id": event.ticket_id, "event_type": event.event_type},
-                )
-            else:
-                summary["failed"] += 1
-                self.metrics.increment("whatsapp_send_failures")
+            self._send_event_notifications(
+                watched_ticket=watched_ticket,
+                event=event,
+                internal_numbers=internal_numbers,
+                summary=summary,
+            )
 
         status = str(snapshot.ticket.get("status") or "")
         if status == "6":
             self.store.stop_watching(watched_ticket.ticket_id)
             self.metrics.increment("tickets_stopped_closed")
+
+    def _send_event_notifications(
+        self,
+        *,
+        watched_ticket,
+        event,
+        internal_numbers: list[str],
+        summary: dict[str, int],
+    ) -> None:
+        sent_keys: set[str] = set()
+        if watched_ticket.requester_phone:
+            user_message = self.renderer.render_user_message(watched_ticket, event)
+            if self._send_to_recipient(
+                phone=watched_ticket.requester_phone,
+                message=user_message,
+                metric_success="events_sent",
+                metric_failure="whatsapp_send_failures",
+                summary_key="sent",
+                summary=summary,
+            ):
+                sent_keys.add(self._recipient_key(watched_ticket.requester_phone))
+
+        internal_message = self.renderer.render_internal_event_message(watched_ticket, event)
+        for phone in internal_numbers:
+            recipient_key = self._recipient_key(phone)
+            if recipient_key in sent_keys:
+                self.metrics.increment("internal_events_deduplicated")
+                continue
+            if self._send_to_recipient(
+                phone=phone,
+                message=internal_message,
+                metric_success="internal_events_sent",
+                metric_failure="internal_events_failed",
+                summary_key="sent_internal",
+                summary=summary,
+            ):
+                sent_keys.add(recipient_key)
+
+    def _send_to_recipient(
+        self,
+        *,
+        phone: str,
+        message: str,
+        metric_success: str,
+        metric_failure: str,
+        summary_key: str,
+        summary: dict[str, int],
+    ) -> bool:
+        result = self.dispatcher.send_message(phone, message)
+        if result.ok:
+            summary[summary_key] += 1
+            self.metrics.increment(metric_success)
+            logger.info("ticket_notification_event_sent", extra={"phone": phone})
+            return True
+
+        summary["failed"] += 1
+        self.metrics.increment(metric_failure)
+        self._send_error_alert(
+            reason="falha ao enviar WhatsApp",
+            detail=result.error or f"HTTP {result.status_code}",
+        )
+        return False
+
+    def _send_error_alert(
+        self,
+        *,
+        reason: str,
+        ticket_id: int | None = None,
+        detail: str = "",
+    ) -> None:
+        numbers = self._split_numbers(self.settings.ticket_notification_error_alert_numbers)
+        if not numbers or not self._can_send_error_alert(reason, ticket_id):
+            return
+
+        message = self.renderer.render_error_alert_message(
+            reason=reason,
+            ticket_id=ticket_id,
+            detail=detail[:500],
+        )
+        for phone in numbers:
+            result = self.dispatcher.send_message(phone, message)
+            if result.ok:
+                self.metrics.increment("error_alerts_sent")
+            else:
+                self.metrics.increment("error_alerts_failed")
+
+    def _can_send_error_alert(self, reason: str, ticket_id: int | None) -> bool:
+        cooldown = max(0, self.settings.ticket_notification_error_alert_cooldown_seconds)
+        if cooldown == 0:
+            return True
+
+        digest_key = self._recipient_key(f"{reason}:{ticket_id or 'global'}")
+        key = f"ticket_notifications:error_alert:{digest_key}"
+        return bool(self.store.redis_client.set(key, str(int(time.time())), nx=True, ex=cooldown))
+
+    def _internal_update_numbers(self) -> list[str]:
+        return self._split_numbers(self.settings.ticket_notification_internal_update_numbers)
+
+    @staticmethod
+    def _split_numbers(value: str) -> list[str]:
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    @staticmethod
+    def _recipient_key(phone: str) -> str:
+        digits = "".join(char for char in str(phone) if char.isdigit())
+        if digits.startswith("55") and len(digits) > 10:
+            digits = digits[2:]
+        return digits

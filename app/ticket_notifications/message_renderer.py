@@ -80,6 +80,37 @@ class TicketNotificationMessageRenderer:
             message += f"\n\n🔗 *Acessar chamado:* {ticket_url}"
         return message
 
+    def render_internal_event_message(
+        self,
+        watched_ticket: WatchedTicket,
+        event: TicketEvent,
+    ) -> str:
+        ticket_label = f"#{watched_ticket.ticket_id}"
+        ticket_url = build_ticket_public_url(self.ticket_url_template, watched_ticket.ticket_id)
+        requester = watched_ticket.requester_name or watched_ticket.requester_login or "solicitante não informado"
+        detail = self._event_detail(event)
+
+        message = self._sentence(
+            f"Atualização do chamado *{ticket_label}* aberto por *{requester}*: "
+            f"{detail}"
+        )
+        if ticket_url:
+            message += f"\n\n🔗 *Acessar chamado:* {ticket_url}"
+        return message
+
+    def render_error_alert_message(
+        self,
+        *,
+        reason: str,
+        ticket_id: int | None = None,
+        detail: str = "",
+    ) -> str:
+        ticket_part = f" no chamado *#{ticket_id}*" if ticket_id else ""
+        message = f"Falha no monitoramento de chamados{ticket_part}: *{reason}*."
+        if detail:
+            message += f"\n\nDetalhe: {detail}"
+        return message
+
     def _notification_opener(
         self,
         watched_ticket: WatchedTicket,

@@ -69,6 +69,7 @@ def _send_internal_ticket_opened_notification(
     dispatcher = WhatsAppNotificationDispatcher(
         base_url=settings.whatsapp_outbound_base_url,
         internal_token=settings.whatsapp_internal_api_token,
+        timeout_seconds=settings.ticket_notification_dispatch_timeout_seconds,
     )
     renderer = TicketNotificationMessageRenderer(
         ticket_url_template=settings.glpi_ticket_public_url_template

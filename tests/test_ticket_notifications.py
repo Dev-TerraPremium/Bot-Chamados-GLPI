@@ -4,6 +4,7 @@ from app.application_config.settings import AppSettings
 from app.ticket_notifications.event_detector import TicketEventDetector
 from app.ticket_notifications.event_reader import GLPITicketEventReader
 from app.ticket_notifications.event_store import TicketNotificationStore
+from app.glpi_integration_reserved.glpi_future_real_client import GLPIClientError
 from app.ticket_notifications.message_renderer import TicketNotificationMessageRenderer
 from app.ticket_notifications.models import TicketActivitySnapshot, TicketEvent, WatchedTicket
 from app.ticket_notifications.pipeline import TicketNotificationPipeline
@@ -15,6 +16,11 @@ class FakeReader:
 
     def read_snapshot(self, ticket_id: int):
         return self.snapshots.pop(0)
+
+
+class FailingReader:
+    def read_snapshot(self, ticket_id: int):
+        raise GLPIClientError("GLPI indisponível")
 
 
 class FakeDispatcher:
@@ -184,6 +190,146 @@ def test_pipeline_can_ignore_private_events_by_env():
 
     assert summary["ignored"] == 1
     assert dispatcher.sent == []
+
+
+def test_pipeline_sends_ticket_updates_to_internal_numbers():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9145,
+            requester_phone="556699990980",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    followup = {
+        "id": 103,
+        "content": "Tecnico atualizou o chamado.",
+        "date_creation": "2026-05-11 12:34:00",
+        "is_private": 0,
+    }
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_internal_update_numbers="6699990001,6699990000",
+        ),
+        redis_client=redis_client,
+        event_reader=FakeReader(
+            [
+                snapshot_with_followups(),
+                snapshot_with_followups(followup),
+            ]
+        ),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    pipeline.run_once()
+    summary = pipeline.run_once()
+
+    assert summary["sent"] == 1
+    assert summary["sent_internal"] == 2
+    assert [phone for phone, _message in dispatcher.sent] == [
+        "556699990980",
+        "6699990001",
+        "6699990000",
+    ]
+    assert "aberto por *Pedro Torres*" in dispatcher.sent[1][1]
+
+
+def test_pipeline_deduplicates_internal_number_when_it_matches_requester():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9145,
+            requester_phone="556699990980",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    followup = {
+        "id": 104,
+        "content": "Atualizacao unica.",
+        "date_creation": "2026-05-11 12:35:00",
+        "is_private": 0,
+    }
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_internal_update_numbers="6699990980",
+        ),
+        redis_client=redis_client,
+        event_reader=FakeReader(
+            [
+                snapshot_with_followups(),
+                snapshot_with_followups(followup),
+            ]
+        ),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    pipeline.run_once()
+    summary = pipeline.run_once()
+
+    assert summary["sent"] == 1
+    assert summary["sent_internal"] == 0
+    assert len(dispatcher.sent) == 1
+
+
+def test_pipeline_sends_throttled_error_alerts():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9145,
+            requester_phone="556699990980",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_error_alert_numbers="6699990980",
+            ticket_notification_error_alert_cooldown_seconds=300,
+        ),
+        redis_client=redis_client,
+        event_reader=FailingReader(),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    first_summary = pipeline.run_once()
+    second_summary = pipeline.run_once()
+
+    assert first_summary["failed"] == 1
+    assert second_summary["failed"] == 1
+    assert len(dispatcher.sent) == 1
+    assert "Falha no monitoramento de chamados" in dispatcher.sent[0][1]
 
 
 def test_glpi_event_reader_maps_related_item_endpoints():
