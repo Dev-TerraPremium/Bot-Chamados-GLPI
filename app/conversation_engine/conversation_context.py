@@ -32,6 +32,7 @@ class ConversationContext:
     severity: str | None = None
     location: str | None = None
     glpi_location_id: int | None = None
+    location_selection_options: list[dict[str, Any]] = field(default_factory=list)
     awaiting_location_retry: bool = False
     evidence: str | None = None
     suggested_title: str | None = None
@@ -61,6 +62,7 @@ class ConversationContext:
         self.severity = None
         self.location = None
         self.glpi_location_id = None
+        self.location_selection_options = []
         self.awaiting_location_retry = False
         self.evidence = None
         self.suggested_title = None

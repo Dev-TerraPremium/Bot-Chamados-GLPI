@@ -55,7 +55,7 @@ def test_category_assignment_rejects_unavailable_choice() -> None:
     assert "não está disponível" in result.bot_message
 
 
-def test_location_requires_text_not_menu_number() -> None:
+def test_location_accepts_numbered_menu_choice() -> None:
     controller = ConversationFlowController(
         settings=AppSettings(ai_guided_detailing_enabled=False),
         description_organizer=FakeDescriptionOrganizer()
@@ -69,7 +69,11 @@ def test_location_requires_text_not_menu_number() -> None:
     result = controller.process_message(session_id, "1")
 
     assert result.state == "location_collection"
-    assert "localidade que deve constar no chamado" in result.bot_message
+    assert "Digite apenas" in result.bot_message
+
+    evidence_result = controller.process_message(session_id, "2")
+
+    assert evidence_result.state == "evidence_decision"
 
 
 def test_greeting_returns_main_menu_instead_of_invalid_choice() -> None:

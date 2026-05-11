@@ -94,7 +94,26 @@ def build_description_review_message(
     )
 
 
-def build_location_prompt(retry: bool = False) -> str:
+def build_location_prompt(
+    retry: bool = False,
+    options: list[dict] | None = None,
+) -> str:
+    if options:
+        rendered_options = "\n".join(
+            f"{index}\ufe0f\u20e3 {option['display_name']}"
+            for index, option in enumerate(options, start=1)
+        )
+        prefix = (
+            "NÃ£o consegui identificar essa localidade.\n\n"
+            if retry
+            else ""
+        )
+        return (
+            "ðŸ¢ **Localidade do Chamado**\n\n"
+            f"{prefix}"
+            "Digite apenas o nÃºmero da localidade:\n"
+            f"{rendered_options}"
+        )
     if retry:
         return (
             "🏢 **Localidade do Chamado**\n\n"

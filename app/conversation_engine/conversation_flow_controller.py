@@ -741,23 +741,57 @@ class ConversationFlowController:
         )
         self.state_machine.transition_to(context, ConversationState.LOCATION_COLLECTION)
         context.awaiting_location_retry = False
-        return self._result(context, build_location_prompt())
+        context.location_selection_options = self._build_location_selection_options()
+        return self._result(
+            context,
+            build_location_prompt(options=context.location_selection_options),
+        )
 
     def _handle_location(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        if self.parser.parse_choice(message) is not None:
-            return self._result(context, build_location_prompt(context.awaiting_location_retry))
+        selected_choice = self.parser.parse_choice(message)
+        if selected_choice is not None:
+            selected_location = self._resolve_glpi_location_from_choice(
+                context,
+                selected_choice,
+            )
+            if selected_location is None:
+                context.awaiting_location_retry = True
+                return self._result(
+                    context,
+                    build_location_prompt(
+                        retry=True,
+                        options=context.location_selection_options,
+                    ),
+                )
+            context.location = selected_location.display_name
+            context.glpi_location_id = selected_location.id
+            context.awaiting_location_retry = False
+            self.state_machine.transition_to(context, ConversationState.EVIDENCE_DECISION)
+            return self._result(context, build_evidence_question())
 
         normalized_message = message.strip()
         if not normalized_message:
-            return self._result(context, build_location_prompt(context.awaiting_location_retry))
+            return self._result(
+                context,
+                build_location_prompt(
+                    retry=context.awaiting_location_retry,
+                    options=context.location_selection_options,
+                ),
+            )
 
         if self.settings.is_glpi_real_mode:
             resolved_location = self._resolve_glpi_location_from_text(normalized_message)
             if resolved_location is None:
                 context.awaiting_location_retry = True
-                return self._result(context, build_location_prompt(retry=True))
+                return self._result(
+                    context,
+                    build_location_prompt(
+                        retry=True,
+                        options=context.location_selection_options,
+                    ),
+                )
             context.location = resolved_location.display_name
             context.glpi_location_id = resolved_location.id
             context.awaiting_location_retry = False
@@ -1433,6 +1467,32 @@ class ConversationFlowController:
             if matches:
                 return matches[0]
         return None
+
+    def _resolve_glpi_location_from_choice(
+        self,
+        context: ConversationContext,
+        choice: int,
+    ) -> GLPILocationOption | None:
+        options = context.location_selection_options or self._build_location_selection_options()
+        context.location_selection_options = options
+        if choice < 1 or choice > len(options):
+            return None
+        selected = options[choice - 1]
+        return self.location_service.get_by_id(int(selected["id"]))
+
+    def _build_location_selection_options(self) -> list[dict[str, object]]:
+        try:
+            locations = self.location_service.get_locations()
+        except Exception:
+            logger.exception("location_options_load_failed")
+            return []
+        return [
+            {
+                "id": location.id,
+                "display_name": location.display_name,
+            }
+            for location in locations[:8]
+        ]
 
     def _location_query_candidates(self, message: str) -> list[str]:
         raw_candidates = [

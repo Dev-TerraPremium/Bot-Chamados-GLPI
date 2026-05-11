@@ -409,7 +409,48 @@ def test_real_open_ticket_flow_requires_valid_glpi_location() -> None:
     invalid_location = send(controller, session_id, "unidade inexistente")
 
     assert invalid_location["state"] == "location_collection"
-    assert "Não consegui localizar essa unidade no GLPI" in invalid_location["bot_message"]
+    assert "Digite apenas" in invalid_location["bot_message"]
+
+
+def test_real_open_ticket_flow_accepts_numbered_glpi_location_choice() -> None:
+    session_id = str(uuid4())
+    glpi_client = FakeRealGLPIClient()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Mouse e teclado para compra."),
+        glpi_client=glpi_client,
+        location_service=FakeLocationService(),
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = FakeUsageTracker()
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "Preciso de um mouse e teclado")
+    send(controller, session_id, "1")
+    location_prompt = send(controller, session_id, "1")
+    assert location_prompt["state"] == "location_collection"
+    assert "Digite apenas" in location_prompt["bot_message"]
+
+    evidence_prompt = send(controller, session_id, "2")
+
+    assert evidence_prompt["state"] == "evidence_decision"
+    context = controller.conversation_store.get(session_id)
+    assert context.location == "Rondonópolis"
+    assert context.glpi_location_id == 91
 
 
 def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment() -> None:

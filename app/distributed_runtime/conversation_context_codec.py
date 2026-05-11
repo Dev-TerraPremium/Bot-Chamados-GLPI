@@ -36,6 +36,7 @@ class ConversationContextCodec:
             "severity": context.severity,
             "location": context.location,
             "glpi_location_id": context.glpi_location_id,
+            "location_selection_options": context.location_selection_options,
             "awaiting_location_retry": context.awaiting_location_retry,
             "evidence": context.evidence,
             "suggested_title": context.suggested_title,
@@ -100,6 +101,11 @@ class ConversationContextCodec:
             severity=data.get("severity"),
             location=data.get("location"),
             glpi_location_id=data.get("glpi_location_id"),
+            location_selection_options=[
+                item
+                for item in data.get("location_selection_options", [])
+                if isinstance(item, dict)
+            ],
             awaiting_location_retry=bool(data.get("awaiting_location_retry")),
             evidence=data.get("evidence"),
             suggested_title=data.get("suggested_title"),
