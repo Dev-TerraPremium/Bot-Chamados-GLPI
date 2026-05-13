@@ -672,5 +672,5 @@ def test_renderer_names_linked_person_when_available():
 
     message = renderer.render_user_message(watched, event)
 
-    assert "foi vinculado ao chamado" in message
+    assert "foi vinculada ao chamado" in message
     assert "Pedro Américo Paletot" in message

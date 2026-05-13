@@ -225,9 +225,9 @@ class TicketNotificationMessageRenderer:
         notification_hint = self._notification_hint(payload)
 
         if name and role:
-            return f"*{name}* foi vinculado ao chamado como *{role}*. {notification_hint}".strip()
+            return f"A pessoa *{name}* foi vinculada ao chamado como *{role}*. {notification_hint}".strip()
         if name:
-            return f"*{name}* foi vinculado ao chamado. {notification_hint}".strip()
+            return f"A pessoa *{name}* foi vinculada ao chamado. {notification_hint}".strip()
         if user_id and role:
             return f"Uma pessoa foi vinculada ao chamado como *{role}*. {notification_hint}".strip()
         if user_id:
