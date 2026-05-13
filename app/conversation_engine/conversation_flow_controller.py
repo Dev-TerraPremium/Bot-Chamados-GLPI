@@ -649,7 +649,7 @@ class ConversationFlowController:
                 )
                 return self._glpi_category_unavailable_result(
                     context,
-                    "Nao consegui pesquisar as categorias reais do GLPI agora.",
+                    "Não consegui pesquisar as categorias reais do GLPI agora.",
                 )
             self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
             if not results:
@@ -1247,7 +1247,7 @@ class ConversationFlowController:
                 )
                 return self._glpi_category_unavailable_result(
                     context,
-                    "Consegui organizar sua descricao, mas nao consegui consultar as categorias reais do GLPI agora.",
+                    "Consegui organizar sua descrição, mas não consegui consultar as categorias reais do GLPI agora.",
                 )
         else:
             category_match = self.category_matching_service.find_best_match(
@@ -1734,13 +1734,13 @@ class ConversationFlowController:
             )
             context.category_selection_options = []
             return (
-                "Nao consegui carregar as categorias reais do GLPI agora. "
+                "Não consegui carregar as categorias reais do GLPI agora. "
                 "Tente novamente em instantes."
             )
         context.category_selection_options = [self._category_to_context_dict(category) for category in categories[:5]]
         if not context.category_selection_options:
             return (
-                "Nao consegui carregar as categorias reais do GLPI agora. "
+                "Não consegui carregar as categorias reais do GLPI agora. "
                 "Tente novamente em instantes."
             )
 
@@ -1777,7 +1777,7 @@ class ConversationFlowController:
         self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
         return self._result(
             context,
-            message + "\n\nNao vou perder sua descricao. Tente novamente em instantes.",
+            message + "\n\nNão vou perder sua descrição. Tente novamente em instantes.",
         )
 
     @staticmethod

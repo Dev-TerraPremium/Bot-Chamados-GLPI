@@ -110,4 +110,5 @@ def test_real_open_ticket_flow_does_not_raise_500_when_glpi_category_lookup_fail
     response = send(controller, session_id, "wifi caindo no deposito")
 
     assert response["state"] == "category_selection"
-    assert "nao consegui consultar as categorias reais do glpi agora" in response["bot_message"].lower()
+    assert "não consegui consultar as categorias reais do glpi agora" in response["bot_message"].lower()
+    assert "não vou perder sua descrição" in response["bot_message"].lower()

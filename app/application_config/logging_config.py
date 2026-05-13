@@ -20,6 +20,10 @@ STRUCTURED_EXTRA_FIELDS = (
     "category_id",
     "category_source",
     "confidence",
+    "method",
+    "path",
+    "error",
+    "body",
 )
 
 
