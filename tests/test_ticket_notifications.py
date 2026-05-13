@@ -39,6 +39,19 @@ class FakeDispatcher:
         return Result()
 
 
+class FakeTeamsDispatcher:
+    def __init__(self):
+        self.sent = []
+
+    def send_ticket_update(self, channel_identifier: str, *, ticket_id: int, message: str):
+        self.sent.append((channel_identifier, ticket_id, message))
+
+        class Result:
+            ok = True
+
+        return Result()
+
+
 class FakeGLPIClient:
     def __init__(self):
         self.related_calls = []
@@ -394,6 +407,58 @@ def test_pipeline_sends_throttled_error_alerts():
     assert "Falha no monitoramento de chamados" in dispatcher.sent[0][1]
 
 
+def test_pipeline_sends_ticket_updates_to_teams_channel():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9274,
+            requester_phone="",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+            channel="teams",
+            channel_identifier="aad-user-id",
+        )
+    )
+    followup = {
+        "id": 105,
+        "content": "Tecnico atualizou o chamado.",
+        "date_creation": "2026-05-11 12:36:00",
+        "is_private": 0,
+    }
+    teams_dispatcher = FakeTeamsDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_poll_interval_seconds=0,
+        ),
+        redis_client=redis_client,
+        event_reader=FakeReader(
+            [
+                snapshot_with_status(9274, 2),
+                snapshot_with_status(9274, 2, followup),
+            ]
+        ),
+        dispatcher=FakeDispatcher(),
+        store=store,
+        teams_dispatcher=teams_dispatcher,
+    )
+
+    pipeline.run_once()
+    summary = pipeline.run_once()
+
+    assert summary["sent"] == 1
+    assert teams_dispatcher.sent[0][0] == "aad-user-id"
+    assert teams_dispatcher.sent[0][1] == 9274
+    assert "Tecnico atualizou" in teams_dispatcher.sent[0][2]
+
+
 def test_store_rotates_due_watched_tickets_without_starving_later_items():
     redis_client = fakeredis.FakeRedis(decode_responses=True)
     store = TicketNotificationStore(redis_client)
@@ -642,7 +707,41 @@ def test_renderer_varies_opening_and_describes_ticket_changes():
 
     assert len({message.split(":")[0] for message in messages}) > 1
     assert any(not message.startswith("Pedro,") for message in messages)
-    assert all("O *status* mudou de *novo* para *em atendimento*" in message for message in messages)
+    assert all("O *status* mudou de *novo* → *em atendimento*" in message for message in messages)
+
+
+def test_event_mapper_uses_human_labels_for_glpi_levels():
+    detector = TicketEventDetector(TicketNotificationStore(fakeredis.FakeRedis(decode_responses=True)))
+    snapshot = TicketActivitySnapshot(
+        ticket_id=9274,
+        ticket={"id": 9274, "status": 2, "priority": 5, "urgency": 4, "impact": 3},
+        related_items={
+            "ITILFollowup": [],
+            "ITILSolution": [],
+            "TicketTask": [],
+            "TicketValidation": [],
+            "Document_Item": [],
+            "Ticket_User": [],
+            "Group_Ticket": [],
+        },
+    )
+
+    events = detector.mapper.events_from_snapshot(
+        snapshot,
+        {
+            "ticket": {
+                "status": "1",
+                "priority": "2",
+                "urgency": "2",
+                "impact": "2",
+            }
+        },
+    )
+    values = {event.event_type: (event.old_value, event.new_value) for event in events}
+
+    assert values["ticket_priority_changed"] == ("Baixa", "Muito alta")
+    assert values["ticket_urgency_changed"] == ("Baixa", "Alta")
+    assert values["ticket_impact_changed"] == ("Baixo", "Médio")
 
 
 def test_renderer_names_linked_person_when_available():

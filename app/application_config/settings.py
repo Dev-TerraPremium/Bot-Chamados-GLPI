@@ -111,6 +111,13 @@ class AppSettings:
     ticket_notification_dispatch_timeout_seconds: float = 5.0
     whatsapp_outbound_base_url: str = "http://whatsapp:8081"
     whatsapp_internal_api_token: str = ""
+    teams_enabled: bool = False
+    teams_app_id: str = ""
+    teams_app_password: str = ""
+    teams_tenant_id: str = ""
+    teams_public_bot_endpoint: str = ""
+    teams_auth_validation_enabled: bool = True
+    teams_connector_timeout_seconds: float = 8.0
 
     @property
     def is_glpi_real_mode(self) -> bool:
@@ -153,6 +160,20 @@ class AppSettings:
                 raise RuntimeError("STATE_BACKEND=redis e obrigatorio para notificacoes.")
             if not self.whatsapp_internal_api_token:
                 raise RuntimeError("WHATSAPP_INTERNAL_API_TOKEN e obrigatorio para notificacoes.")
+        if self.teams_enabled:
+            if not self.is_redis_state_enabled:
+                raise RuntimeError("STATE_BACKEND=redis e obrigatorio para Microsoft Teams.")
+            missing = []
+            if not self.teams_app_id:
+                missing.append("TEAMS_APP_ID")
+            if not self.teams_app_password:
+                missing.append("TEAMS_APP_PASSWORD")
+            if not self.teams_public_bot_endpoint:
+                missing.append("TEAMS_PUBLIC_BOT_ENDPOINT")
+            if missing:
+                raise RuntimeError(
+                    "Configuracao Microsoft Teams incompleta: " + ", ".join(missing)
+                )
 
 
 def load_settings() -> AppSettings:
@@ -255,6 +276,13 @@ def load_settings() -> AppSettings:
         ticket_notification_dispatch_timeout_seconds=_get_float("TICKET_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS", 5.0),
         whatsapp_outbound_base_url=os.getenv("WHATSAPP_OUTBOUND_BASE_URL", "http://whatsapp:8081"),
         whatsapp_internal_api_token=os.getenv("WHATSAPP_INTERNAL_API_TOKEN", ""),
+        teams_enabled=_get_bool("TEAMS_ENABLED", False),
+        teams_app_id=os.getenv("TEAMS_APP_ID", ""),
+        teams_app_password=os.getenv("TEAMS_APP_PASSWORD", ""),
+        teams_tenant_id=os.getenv("TEAMS_TENANT_ID", ""),
+        teams_public_bot_endpoint=os.getenv("TEAMS_PUBLIC_BOT_ENDPOINT", ""),
+        teams_auth_validation_enabled=_get_bool("TEAMS_AUTH_VALIDATION_ENABLED", True),
+        teams_connector_timeout_seconds=_get_float("TEAMS_CONNECTOR_TIMEOUT_SECONDS", 8.0),
     )
     settings.validate_runtime_requirements()
     return settings

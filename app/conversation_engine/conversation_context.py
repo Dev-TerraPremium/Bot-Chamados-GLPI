@@ -10,6 +10,7 @@ class ConversationContext:
     session_id: str
     channel: str
     user: AuthenticatedUser
+    channel_identifier: str = ""
     state: ConversationState = ConversationState.MAIN_MENU
     opening_mode: str | None = None
     ticket_type: int = 1
@@ -86,6 +87,7 @@ class ConversationContext:
         return {
             "session_id": self.session_id,
             "channel": self.channel,
+            "channel_identifier": self.channel_identifier,
             "user": self.user.to_safe_dict(),
             "state": self.state.value,
             "opening_mode": self.opening_mode,

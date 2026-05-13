@@ -36,6 +36,8 @@ def build_client(rows: list[dict], search_options: dict | None = None) -> GLPIRe
                 if value in str(row.get("5", ""))
                 or value in str(row.get("6", ""))
                 or value in str(row.get("7", ""))
+                or value in str(row.get("8", ""))
+                or value in str(row.get("42", ""))
             ]
             return httpx.Response(200, json={"data": matched})
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -175,3 +177,26 @@ def test_glpi_real_user_lookup_returns_multiple_candidates_for_ambiguous_phone()
     )
 
     assert {candidate.id for candidate in candidates} == {300, 301}
+
+
+def test_glpi_real_user_lookup_can_match_cpf_without_phone() -> None:
+    lookup = GLPIRealUserIdentityLookupService(
+        build_client(
+            [
+                {
+                    "2": 266,
+                    "1": "pedro.torres",
+                    "9": "Pedro",
+                    "34": "Americo Paletot de Alcantara Torres",
+                    "5": "",
+                    "8": "099.150.671-51",
+                    "10": 1,
+                }
+            ]
+        )
+    )
+
+    candidates = lookup.find_active_candidates_by_cpf_prefix("0991")
+
+    assert len(candidates) == 1
+    assert candidates[0].id == 266

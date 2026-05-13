@@ -2,6 +2,23 @@ import re
 
 class ChannelIdentifierNormalizer:
     @staticmethod
+    def normalize(channel: str, identifier: str) -> str:
+        channel_name = (channel or "").strip().casefold()
+        if channel_name in {"whatsapp", "web_simulator"}:
+            return ChannelIdentifierNormalizer.normalize_phone(identifier)
+        return (identifier or "").strip()
+
+    @staticmethod
+    def mask(channel: str, identifier: str) -> str:
+        channel_name = (channel or "").strip().casefold()
+        if channel_name in {"whatsapp", "web_simulator"}:
+            return ChannelIdentifierNormalizer.mask_phone(identifier)
+        normalized = ChannelIdentifierNormalizer.normalize(channel, identifier)
+        if len(normalized) <= 6:
+            return "******" + normalized[-2:]
+        return normalized[:3] + "******" + normalized[-4:]
+
+    @staticmethod
     def normalize_phone(phone: str) -> str:
         """
         Normalizes a phone number by removing spaces, parentheses, hyphens, +, and country code 55.

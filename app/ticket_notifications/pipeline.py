@@ -13,6 +13,7 @@ from app.ticket_notifications.event_store import TicketNotificationStore
 from app.ticket_notifications.message_renderer import TicketNotificationMessageRenderer
 from app.ticket_notifications.metrics_recorder import NotificationMetricsRecorder
 from app.ticket_notifications.whatsapp_dispatcher import WhatsAppNotificationDispatcher
+from app.microsoft_teams.dispatcher import TeamsNotificationDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class TicketNotificationPipeline:
         renderer: TicketNotificationMessageRenderer | None = None,
         metrics: NotificationMetricsRecorder | None = None,
         backfill_service=None,
+        teams_dispatcher: TeamsNotificationDispatcher | None = None,
     ) -> None:
         self.settings = settings
         self.store = store or TicketNotificationStore(
@@ -44,6 +46,7 @@ class TicketNotificationPipeline:
         )
         self.metrics = metrics or NotificationMetricsRecorder(redis_client)
         self.backfill_service = backfill_service
+        self.teams_dispatcher = teams_dispatcher
 
     def run_once(self) -> dict[str, int]:
         summary = {
@@ -149,7 +152,12 @@ class TicketNotificationPipeline:
                 )
                 continue
             internal_numbers = self._internal_update_numbers()
-            if not watched_ticket.requester_phone and not internal_numbers:
+            has_user_destination = bool(watched_ticket.requester_phone) or bool(
+                watched_ticket.channel == "teams"
+                and (watched_ticket.channel_identifier or watched_ticket.requester_phone)
+                and self.teams_dispatcher is not None
+            )
+            if not has_user_destination and not internal_numbers:
                 summary["ignored"] += 1
                 self.metrics.increment("events_ignored_without_phone")
                 continue
@@ -246,7 +254,24 @@ class TicketNotificationPipeline:
         summary: dict[str, int],
     ) -> None:
         sent_keys: set[str] = set()
-        if watched_ticket.requester_phone:
+        if watched_ticket.channel == "teams":
+            teams_identifier = watched_ticket.channel_identifier or watched_ticket.requester_phone
+            if teams_identifier and self.teams_dispatcher is not None:
+                user_message = self.renderer.render_user_message(watched_ticket, event)
+                result = self.teams_dispatcher.send_ticket_update(
+                    teams_identifier,
+                    ticket_id=event.ticket_id,
+                    message=user_message,
+                )
+                if result.ok:
+                    summary["sent"] += 1
+                    self.metrics.increment("teams_events_sent")
+                    sent_keys.add(f"teams:{teams_identifier}")
+                else:
+                    self.metrics.increment("teams_send_failures")
+            elif teams_identifier:
+                self.metrics.increment("teams_dispatcher_missing")
+        elif watched_ticket.requester_phone:
             user_message = self.renderer.render_user_message(watched_ticket, event)
             if self._send_to_recipient(
                 phone=watched_ticket.requester_phone,

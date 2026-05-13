@@ -15,6 +15,7 @@ class WatchedTicket:
     location: str
     created_at: str
     channel: str = "whatsapp"
+    channel_identifier: str = ""
     notification_status: str = "watching"
 
     def to_dict(self) -> dict[str, Any]:
@@ -32,6 +33,12 @@ class WatchedTicket:
             location=str(data.get("location") or ""),
             created_at=str(data.get("created_at") or ""),
             channel=str(data.get("channel") or "whatsapp"),
+            channel_identifier=str(
+                data.get("channel_identifier")
+                or data.get("requester_channel_identifier")
+                or data.get("requester_phone")
+                or ""
+            ),
             notification_status=str(data.get("notification_status") or "watching"),
         )
 

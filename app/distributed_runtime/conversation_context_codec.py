@@ -11,6 +11,7 @@ class ConversationContextCodec:
         return {
             "session_id": context.session_id,
             "channel": context.channel,
+            "channel_identifier": context.channel_identifier,
             "user": context.user.to_safe_dict(),
             "state": context.state.value,
             "opening_mode": context.opening_mode,
@@ -52,6 +53,7 @@ class ConversationContextCodec:
         return ConversationContext(
             session_id=str(data["session_id"]),
             channel=str(data["channel"]),
+            channel_identifier=str(data.get("channel_identifier") or ""),
             user=AuthenticatedUser(
                 full_name=str(user_data["full_name"]),
                 login=str(user_data["login"]),

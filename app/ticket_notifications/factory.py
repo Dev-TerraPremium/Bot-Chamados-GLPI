@@ -11,6 +11,10 @@ from app.ticket_notifications.event_store import TicketNotificationStore
 from app.ticket_notifications.metrics_recorder import NotificationMetricsRecorder
 from app.ticket_notifications.pipeline import TicketNotificationPipeline
 from app.ticket_notifications.whatsapp_dispatcher import WhatsAppNotificationDispatcher
+from app.microsoft_teams.adaptive_cards import TeamsAdaptiveCardRenderer
+from app.microsoft_teams.bot_framework_client import TeamsBotFrameworkClient
+from app.microsoft_teams.conversation_reference_store import TeamsConversationReferenceStore
+from app.microsoft_teams.dispatcher import TeamsNotificationDispatcher
 
 
 def build_notification_glpi_client(settings: AppSettings) -> GLPIRealClient:
@@ -57,6 +61,18 @@ def build_notification_pipeline(
         detector=detector,
         metrics=metrics,
     )
+    teams_dispatcher = None
+    if settings.teams_enabled:
+        teams_dispatcher = TeamsNotificationDispatcher(
+            reference_store=TeamsConversationReferenceStore(
+                redis_client,
+                ttl_seconds=settings.channel_link_audit_ttl_seconds,
+            ),
+            client=TeamsBotFrameworkClient(settings),
+            card_renderer=TeamsAdaptiveCardRenderer(
+                settings.glpi_ticket_public_url_template
+            ),
+        )
     return TicketNotificationPipeline(
         settings=settings,
         redis_client=redis_client,
@@ -66,4 +82,5 @@ def build_notification_pipeline(
         detector=detector,
         metrics=metrics,
         backfill_service=backfill_service,
+        teams_dispatcher=teams_dispatcher,
     )

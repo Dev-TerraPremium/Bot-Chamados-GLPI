@@ -38,6 +38,7 @@ def register_ticket_opened_for_notifications(
     watched_ticket = WatchedTicket(
         ticket_id=ticket_id,
         requester_phone=context.session_id if context.channel == "whatsapp" else "",
+        channel_identifier=context.channel_identifier or context.session_id,
         requester_name=context.user.full_name,
         requester_login=context.user.login,
         category_name=str(created_ticket.get("category_name") or ""),

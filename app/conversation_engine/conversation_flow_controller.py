@@ -208,7 +208,12 @@ class ConversationFlowController:
         if auth_resolution.requires_user_action:
             return self._result_no_context(session_id, auth_resolution.bot_message)
             
-        context = self._get_or_create_context(session_id, channel, auth_resolution.user)
+        context = self._get_or_create_context(
+            session_id,
+            channel,
+            auth_resolution.user,
+            channel_identifier=channel_identifier,
+        )
 
         normalized_media = self._normalize_media_payloads(media)
 
@@ -284,7 +289,12 @@ class ConversationFlowController:
                     "🔄 **Conversa reiniciada com segurança.**\n\n" + (auth_resolution.bot_message or "")
                 )
 
-            context = self._get_or_create_context(normalized_session_id, channel, auth_resolution.user)
+            context = self._get_or_create_context(
+                normalized_session_id,
+                channel,
+                auth_resolution.user,
+                channel_identifier=channel_identifier,
+            )
             return self._result(
                 context,
                 "🔄 **Conversa reiniciada com segurança.**\n\n"
@@ -297,7 +307,11 @@ class ConversationFlowController:
         return self.conversation_store.debug_context(session_id)
 
     def _get_or_create_context(
-        self, session_id: str, channel: str, user=None
+        self,
+        session_id: str,
+        channel: str,
+        user=None,
+        channel_identifier: str = "",
     ) -> ConversationContext:
         context = self.conversation_store.get(session_id)
         if context is not None:
@@ -305,11 +319,14 @@ class ConversationFlowController:
                 if not context.user or context.user.glpi_user_id != user.glpi_user_id:
                     # If user changed unexpectedly or was missing, update it
                     context.user = user
+            if channel_identifier and context.channel_identifier != channel_identifier:
+                context.channel_identifier = channel_identifier
             return context
 
         context = ConversationContext(
             session_id=session_id,
             channel=channel,
+            channel_identifier=channel_identifier,
             user=user,
             state=ConversationState.MAIN_MENU,
         )

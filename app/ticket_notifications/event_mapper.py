@@ -4,17 +4,9 @@ import re
 from html import unescape
 from typing import Any
 
+from app.ticket_notifications.glpi_display_labels import display_ticket_field_value
 from app.ticket_notifications.models import TicketActivitySnapshot, TicketEvent
 
-
-STATUS_LABELS = {
-    "1": "novo",
-    "2": "em atendimento",
-    "3": "planejado",
-    "4": "pendente",
-    "5": "solucionado",
-    "6": "fechado",
-}
 
 TICKET_FIELDS = {
     "status": "ticket_status_changed",
@@ -165,11 +157,9 @@ class TicketEventMapper:
 
     @staticmethod
     def _display_value(field: str, value: str) -> str:
-        if field == "status":
-            return STATUS_LABELS.get(value, value)
         if field == "content":
             return TicketEventMapper._strip_markup(value)
-        return value
+        return display_ticket_field_value(field, value)
 
     @staticmethod
     def _strip_markup(value: str) -> str:

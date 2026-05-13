@@ -160,7 +160,7 @@ class TicketNotificationMessageRenderer:
         if event.old_value or event.new_value:
             return (
                 f"{self._field_article(event, field).capitalize()} *{field}* mudou "
-                f"de *{old_value}* para *{new_value}*"
+                f"de *{old_value}* → *{new_value}*"
             )
         return f"{self._field_article(event, field).capitalize()} *{field}* foi atualizada"
 

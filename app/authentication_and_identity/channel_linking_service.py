@@ -42,8 +42,8 @@ class ChannelLinkingService:
         if channel == "web_simulator" and not channel_identifier:
             channel_identifier = "66999990980"  # default mock phone
 
-        normalized_id = ChannelIdentifierNormalizer.normalize_phone(channel_identifier)
-        masked_id = ChannelIdentifierNormalizer.mask_phone(normalized_id)
+        normalized_id = ChannelIdentifierNormalizer.normalize(channel, channel_identifier)
+        masked_id = ChannelIdentifierNormalizer.mask(channel, normalized_id)
         
         # Web Simulator override
         if channel == "web_simulator" and self.allow_web_simulator_auto_user:
@@ -106,12 +106,7 @@ class ChannelLinkingService:
             is_linked=False,
             user=None,
             requires_user_action=True,
-            bot_message=(
-                "🔐 **Segurança e Identificação**\n\n"
-                "Olá! Para começarmos, preciso vincular este número de WhatsApp ao seu perfil no sistema de chamados.\n\n"
-                f"Identifiquei o telefone com final **{normalized_id[-4:]}**.\n\n"
-                f"Por favor, digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
-            )
+            bot_message=self._build_link_start_message(channel, normalized_id),
         )
 
     def _handle_pending_cpf(self, link: ChannelIdentityLink, message: str, masked_id: str) -> ChannelAuthResolution:
@@ -137,9 +132,12 @@ class ChannelLinkingService:
 
         cpf_prefix = cpf_prefix[:self.prefix_length]
         
-        candidates = self.lookup_service.find_active_candidates_by_channel_phone_and_cpf_prefix(
-            link.channel_identifier, cpf_prefix
-        )
+        if self._is_phone_bound_channel(link.channel):
+            candidates = self.lookup_service.find_active_candidates_by_channel_phone_and_cpf_prefix(
+                link.channel_identifier, cpf_prefix
+            )
+        else:
+            candidates = self.lookup_service.find_active_candidates_by_cpf_prefix(cpf_prefix)
         
         if len(candidates) == 1:
             user_data = candidates[0]
@@ -205,3 +203,27 @@ class ChannelLinkingService:
                 bot_message="❌ Não consegui confirmar seus dados. Verifique os dígitos informados e tente novamente ou procure o TI."
             )
 
+    def _build_link_start_message(self, channel: str, normalized_id: str) -> str:
+        channel_name = (channel or "").strip().casefold()
+        if self._is_phone_bound_channel(channel_name):
+            return (
+                "🔐 **Segurança e Identificação**\n\n"
+                "Olá! Para começarmos, preciso vincular este número de WhatsApp ao seu perfil no sistema de chamados.\n\n"
+                f"Identifiquei o telefone com final **{normalized_id[-4:]}**.\n\n"
+                f"Por favor, digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+            )
+        if channel_name == "teams":
+            return (
+                "🔐 **Segurança e Identificação**\n\n"
+                "Olá! Para começarmos, preciso vincular este usuário do Microsoft Teams ao seu perfil no sistema de chamados.\n\n"
+                f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+            )
+        return (
+            "🔐 **Segurança e Identificação**\n\n"
+            "Olá! Para começarmos, preciso vincular este canal ao seu perfil no sistema de chamados.\n\n"
+            f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+        )
+
+    @staticmethod
+    def _is_phone_bound_channel(channel: str) -> bool:
+        return (channel or "").strip().casefold() in {"whatsapp", "web_simulator"}

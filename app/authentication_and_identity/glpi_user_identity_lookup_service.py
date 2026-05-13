@@ -33,6 +33,11 @@ class GLPIUserIdentityLookupServiceInterface(Protocol):
     ) -> list[GLPIUserIdentity]:
         ...
 
+    def find_active_candidates_by_cpf_prefix(
+        self, cpf_prefix: str
+    ) -> list[GLPIUserIdentity]:
+        ...
+
 
 class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
     def __init__(self, client: GLPIRealClient) -> None:
@@ -130,6 +135,66 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
         )
         return candidates
 
+    def find_active_candidates_by_cpf_prefix(
+        self, cpf_prefix: str
+    ) -> list[GLPIUserIdentity]:
+        from app.authentication_and_identity.channel_identifier_normalizer import (
+            ChannelIdentifierNormalizer,
+        )
+        from app.authentication_and_identity.document_partial_validator import (
+            DocumentPartialValidator,
+        )
+
+        try:
+            resolver = self._get_resolver()
+            field_set = self._resolve_user_fields(resolver)
+        except (GLPIClientError, ValueError):
+            logger.exception("glpi_user_search_options_unavailable")
+            return []
+
+        registration_option = field_set["registration_number"]
+        if not isinstance(registration_option, GLPISearchOption):
+            return []
+
+        rows_by_user_id: dict[int, dict] = {}
+        for term in self._cpf_search_terms(cpf_prefix):
+            try:
+                response = self.client.search(
+                    "User",
+                    self._build_user_search_params(
+                        registration_option,
+                        term,
+                        field_set["forced_display_ids"],
+                    ),
+                )
+            except GLPIClientError:
+                logger.exception("glpi_user_cpf_search_failed")
+                continue
+            for row in response.get("data", []):
+                if not isinstance(row, dict):
+                    continue
+                user_id = self._row_int(row, field_set["id"])
+                if user_id:
+                    rows_by_user_id[user_id] = row
+
+        validator = DocumentPartialValidator(pepper="", prefix_length=len(cpf_prefix))
+        candidates: list[GLPIUserIdentity] = []
+        for row in rows_by_user_id.values():
+            identity = self._identity_from_row(row, field_set)
+            if identity is None or not identity.is_active:
+                continue
+            full_cpf = ChannelIdentifierNormalizer.normalize_cpf(
+                identity.registration_number
+            )
+            if validator.compare_partial_with_full(cpf_prefix, full_cpf):
+                candidates.append(identity)
+
+        logger.info(
+            "glpi_user_cpf_lookup_completed",
+            extra={"candidates_count": len(candidates)},
+        )
+        return candidates
+
     def _get_resolver(self) -> GLPISearchOptionsResolver:
         if self._resolver is None:
             self._resolver = GLPISearchOptionsResolver(
@@ -210,6 +275,16 @@ class GLPIRealUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
                 terms.append(variant[-8:])
             if len(variant) >= 4:
                 terms.append(variant[-4:])
+        return list(dict.fromkeys(term for term in terms if term))
+
+    @staticmethod
+    def _cpf_search_terms(cpf_prefix: str) -> list[str]:
+        clean_prefix = "".join(ch for ch in str(cpf_prefix) if ch.isdigit())
+        terms = [clean_prefix]
+        if len(clean_prefix) >= 3:
+            terms.append(clean_prefix[:3])
+        if len(clean_prefix) >= 2:
+            terms.append(clean_prefix[:2])
         return list(dict.fromkeys(term for term in terms if term))
 
     def _identity_from_row(
@@ -346,4 +421,22 @@ class MockGLPIUserIdentityLookupService(GLPIUserIdentityLookupServiceInterface):
                 if validator.compare_partial_with_full(cpf_prefix, full_cpf):
                     candidates.append(u)
                     
+        return candidates
+
+    def find_active_candidates_by_cpf_prefix(
+        self, cpf_prefix: str
+    ) -> list[GLPIUserIdentity]:
+        from app.authentication_and_identity.channel_identifier_normalizer import ChannelIdentifierNormalizer
+        from app.authentication_and_identity.document_partial_validator import DocumentPartialValidator
+
+        candidates = []
+        validator = DocumentPartialValidator(pepper="", prefix_length=len(cpf_prefix))
+
+        for u in self.mock_users:
+            if not u.is_active:
+                continue
+            full_cpf = ChannelIdentifierNormalizer.normalize_cpf(u.registration_number)
+            if validator.compare_partial_with_full(cpf_prefix, full_cpf):
+                candidates.append(u)
+
         return candidates
