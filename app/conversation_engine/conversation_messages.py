@@ -93,7 +93,6 @@ def build_description_review_message(
         "4️⃣ **Cancelar**"
     )
 
-
 def build_location_prompt(
     retry: bool = False,
     options: list[dict] | None = None,
