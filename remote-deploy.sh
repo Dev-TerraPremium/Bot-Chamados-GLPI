@@ -73,6 +73,13 @@ fi
 
 log "Instalando painel terminal botctl..."
 if [ -f "$REMOTE_DIR/scripts/botctl.py" ]; then
+    python3 - <<'PY'
+from pathlib import Path
+
+path = Path("/opt/bot-chamados-glpi/scripts/botctl.py")
+data = path.read_bytes()
+path.write_bytes(data.replace(b"\r\n", b"\n").replace(b"\r", b"\n"))
+PY
     chmod +x "$REMOTE_DIR/scripts/botctl.py"
     ln -sf "$REMOTE_DIR/scripts/botctl.py" /usr/local/bin/botctl
     ok "botctl instalado. Use: botctl"
