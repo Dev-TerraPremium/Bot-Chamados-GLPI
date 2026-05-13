@@ -32,6 +32,7 @@ class GLPITicketEventReader:
     ) -> None:
         self.glpi_client = glpi_client
         self.related_itemtypes = tuple(related_itemtypes)
+        self._item_name_cache: dict[tuple[str, int], str] = {}
 
     def read_ticket(self, ticket_id: int) -> dict:
         return self.glpi_client.get_item("Ticket", ticket_id)
@@ -61,4 +62,85 @@ class GLPITicketEventReader:
                 extra={"ticket_id": ticket_id, "itemtype": itemtype},
             )
             return []
-        return [item for item in response.get("items", []) if isinstance(item, dict)]
+        items = [item for item in response.get("items", []) if isinstance(item, dict)]
+        if itemtype == "Ticket_User":
+            return [self._enrich_ticket_user(item) for item in items]
+        if itemtype == "Group_Ticket":
+            return [self._enrich_group_ticket(item) for item in items]
+        return items
+
+    def _enrich_ticket_user(self, item: dict) -> dict:
+        user_id = self._int_value(item.get("users_id"))
+        if not user_id:
+            return item
+
+        enriched = dict(item)
+        enriched.setdefault("linked_type_label", self._ticket_actor_type_label(item.get("type")))
+        name = self._get_item_display_name("User", user_id)
+        if name:
+            enriched.setdefault("linked_user_name", name)
+        return enriched
+
+    def _enrich_group_ticket(self, item: dict) -> dict:
+        group_id = self._int_value(item.get("groups_id"))
+        if not group_id:
+            return item
+
+        enriched = dict(item)
+        enriched.setdefault("linked_type_label", self._ticket_actor_type_label(item.get("type")))
+        name = self._get_item_display_name("Group", group_id)
+        if name:
+            enriched.setdefault("linked_group_name", name)
+        return enriched
+
+    def _get_item_display_name(self, itemtype: str, item_id: int) -> str:
+        cache_key = (itemtype, item_id)
+        if cache_key in self._item_name_cache:
+            return self._item_name_cache[cache_key]
+
+        try:
+            item = self.glpi_client.get_item(itemtype, item_id)
+        except GLPIClientError:
+            logger.warning(
+                "ticket_notification_linked_item_read_failed",
+                extra={"itemtype": itemtype, "item_id": item_id},
+            )
+            self._item_name_cache[cache_key] = ""
+            return ""
+
+        name = self._display_name_from_item(item)
+        self._item_name_cache[cache_key] = name
+        return name
+
+    @staticmethod
+    def _display_name_from_item(item: dict) -> str:
+        full_name = " ".join(
+            part.strip()
+            for part in (
+                str(item.get("firstname") or ""),
+                str(item.get("realname") or ""),
+            )
+            if part and part.strip()
+        ).strip()
+        if full_name:
+            return full_name
+        for field in ("completename", "name", "login"):
+            value = item.get(field)
+            if value not in (None, ""):
+                return str(value).strip()
+        return ""
+
+    @staticmethod
+    def _ticket_actor_type_label(value) -> str:
+        return {
+            "1": "solicitante",
+            "2": "responsável pelo atendimento",
+            "3": "observador",
+        }.get(str(value or "").strip(), "")
+
+    @staticmethod
+    def _int_value(value) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0

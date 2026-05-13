@@ -44,6 +44,10 @@ class FakeGLPIClient:
         self.related_calls = []
 
     def get_item(self, itemtype: str, item_id: int):
+        if itemtype == "User":
+            return {"id": item_id, "firstname": "Ana", "realname": "Silva", "name": "asilva"}
+        if itemtype == "Group":
+            return {"id": item_id, "name": "Suporte N2"}
         return {"id": item_id, "status": 2, "name": "Chamado teste"}
 
     def get_ticket_related_items(self, ticket_id: int, itemtype: str):
@@ -297,7 +301,7 @@ def test_pipeline_sends_ticket_updates_to_internal_numbers():
         "6699990001",
         "6699990000",
     ]
-    assert "aberto por *Pedro Torres*" in dispatcher.sent[1][1]
+    assert "de *Pedro Torres*" in dispatcher.sent[1][1]
 
 
 def test_pipeline_deduplicates_internal_number_when_it_matches_requester():
@@ -638,7 +642,7 @@ def test_renderer_varies_opening_and_describes_ticket_changes():
 
     assert len({message.split(":")[0] for message in messages}) > 1
     assert any(not message.startswith("Pedro,") for message in messages)
-    assert all("o *status* mudou de *novo* para *em atendimento*" in message for message in messages)
+    assert all("O *status* mudou de *novo* para *em atendimento*" in message for message in messages)
 
 
 def test_renderer_names_linked_person_when_available():
@@ -668,5 +672,5 @@ def test_renderer_names_linked_person_when_available():
 
     message = renderer.render_user_message(watched, event)
 
-    assert "pessoas vinculadas" in message
+    assert "foi vinculado ao chamado" in message
     assert "Pedro Américo Paletot" in message
