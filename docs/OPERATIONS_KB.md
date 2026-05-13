@@ -170,6 +170,21 @@ tempo:
   conector WhatsApp via `env_file`.
 - `scheduler` e `worker-glpi` em execucao.
 
+O monitor usa uma fila Redis rotativa. Cada chamado observado recebe um
+`next_poll_at`; o worker pega apenas os vencidos ate
+`TICKET_NOTIFICATION_BATCH_SIZE` e reprograma os ativos com pequeno jitter.
+Isso evita que 300 chamados facam sempre o mesmo lote bloquear os demais.
+
+Chamados com status GLPI em `TICKET_NOTIFICATION_TERMINAL_STATUSES` saem da
+observacao automaticamente. O padrao `5,6` cobre solucionado e fechado.
+
+O backfill controlado (`TICKET_NOTIFICATION_BACKFILL_ENABLED=true`) consulta
+periodicamente poucos usuarios vinculados por rodada, respeitando
+`TICKET_NOTIFICATION_BACKFILL_USER_LIMIT` e
+`TICKET_NOTIFICATION_BACKFILL_TICKETS_PER_USER`. Ele registra chamados recentes
+que ainda nao estavam sendo observados e cria baseline sem disparar notificacoes
+antigas em massa.
+
 Diagnostico rapido:
 
 ```bash

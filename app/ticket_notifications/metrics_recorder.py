@@ -22,6 +22,14 @@ class NotificationMetricsRecorder:
         except Exception:
             logger.exception("ticket_notification_metric_increment_failed")
 
+    def gauge(self, metric: str, value: int | float) -> None:
+        if self.redis_client is None:
+            return
+        try:
+            self.redis_client.hset(self.KEY_PREFIX, metric, value)
+        except Exception:
+            logger.exception("ticket_notification_metric_gauge_failed")
+
     def observe_ms(self, metric: str, value_ms: int) -> None:
         if self.redis_client is None:
             return

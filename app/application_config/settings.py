@@ -96,6 +96,12 @@ class AppSettings:
     ticket_notifications_enabled: bool = False
     ticket_notification_poll_interval_seconds: int = 30
     ticket_notification_batch_size: int = 50
+    ticket_notification_retry_delay_seconds: int = 120
+    ticket_notification_terminal_statuses: str = "5,6"
+    ticket_notification_backfill_enabled: bool = True
+    ticket_notification_backfill_interval_seconds: int = 900
+    ticket_notification_backfill_user_limit: int = 20
+    ticket_notification_backfill_tickets_per_user: int = 5
     ticket_notification_internal_numbers: str = ""
     ticket_notification_internal_update_numbers: str = ""
     ticket_notification_error_alert_numbers: str = ""
@@ -234,6 +240,12 @@ def load_settings() -> AppSettings:
         ticket_notifications_enabled=_get_bool("TICKET_NOTIFICATIONS_ENABLED", False),
         ticket_notification_poll_interval_seconds=_get_int("TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS", 30),
         ticket_notification_batch_size=_get_int("TICKET_NOTIFICATION_BATCH_SIZE", 50),
+        ticket_notification_retry_delay_seconds=_get_int("TICKET_NOTIFICATION_RETRY_DELAY_SECONDS", 120),
+        ticket_notification_terminal_statuses=os.getenv("TICKET_NOTIFICATION_TERMINAL_STATUSES", "5,6"),
+        ticket_notification_backfill_enabled=_get_bool("TICKET_NOTIFICATION_BACKFILL_ENABLED", True),
+        ticket_notification_backfill_interval_seconds=_get_int("TICKET_NOTIFICATION_BACKFILL_INTERVAL_SECONDS", 900),
+        ticket_notification_backfill_user_limit=_get_int("TICKET_NOTIFICATION_BACKFILL_USER_LIMIT", 20),
+        ticket_notification_backfill_tickets_per_user=_get_int("TICKET_NOTIFICATION_BACKFILL_TICKETS_PER_USER", 5),
         ticket_notification_internal_numbers=os.getenv("TICKET_NOTIFICATION_INTERNAL_NUMBERS", ""),
         ticket_notification_internal_update_numbers=os.getenv("TICKET_NOTIFICATION_INTERNAL_UPDATE_NUMBERS", ""),
         ticket_notification_error_alert_numbers=os.getenv("TICKET_NOTIFICATION_ERROR_ALERT_NUMBERS", ""),

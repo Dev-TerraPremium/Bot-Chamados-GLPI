@@ -28,16 +28,40 @@ class TicketNotificationStore:
         self.watch_ttl_seconds = max(1, watch_ttl_days) * 86400
         self.recent_events_ttl_seconds = recent_events_ttl_seconds
 
-    def watch_ticket(self, watched_ticket: WatchedTicket) -> None:
+    def watch_ticket(
+        self,
+        watched_ticket: WatchedTicket,
+        *,
+        next_poll_at: float | None = None,
+    ) -> None:
         payload = json.dumps(watched_ticket.to_dict(), ensure_ascii=False)
         key = self._ticket_key(watched_ticket.ticket_id)
+        score = time.time() if next_poll_at is None else next_poll_at
         pipe = self.redis_client.pipeline()
         pipe.setex(key, self.watch_ttl_seconds, payload)
-        pipe.zadd(self.WATCHED_SET, {str(watched_ticket.ticket_id): time.time()})
+        pipe.zadd(self.WATCHED_SET, {str(watched_ticket.ticket_id): score})
         pipe.execute()
 
-    def list_watched_tickets(self, limit: int) -> list[WatchedTicket]:
-        ticket_ids = self.redis_client.zrange(self.WATCHED_SET, 0, max(0, limit - 1))
+    def is_watching(self, ticket_id: int) -> bool:
+        return bool(self.redis_client.exists(self._ticket_key(ticket_id)))
+
+    def count_watched_tickets(self) -> int:
+        return int(self.redis_client.zcard(self.WATCHED_SET) or 0)
+
+    def list_watched_tickets(
+        self,
+        limit: int,
+        *,
+        now: float | None = None,
+    ) -> list[WatchedTicket]:
+        current_time = time.time() if now is None else now
+        ticket_ids = self.redis_client.zrangebyscore(
+            self.WATCHED_SET,
+            min="-inf",
+            max=current_time,
+            start=0,
+            num=max(0, limit),
+        )
         watched: list[WatchedTicket] = []
         stale_ids: list[str] = []
         for ticket_id in ticket_ids:
@@ -56,6 +80,19 @@ class TicketNotificationStore:
         if stale_ids:
             self.redis_client.zrem(self.WATCHED_SET, *stale_ids)
         return watched
+
+    def reschedule_ticket(
+        self,
+        ticket_id: int,
+        *,
+        delay_seconds: int,
+        now: float | None = None,
+    ) -> None:
+        current_time = time.time() if now is None else now
+        self.redis_client.zadd(
+            self.WATCHED_SET,
+            {str(ticket_id): current_time + max(0, delay_seconds)},
+        )
 
     def stop_watching(self, ticket_id: int) -> None:
         pipe = self.redis_client.pipeline()

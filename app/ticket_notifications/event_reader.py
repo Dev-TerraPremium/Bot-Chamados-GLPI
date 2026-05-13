@@ -33,8 +33,16 @@ class GLPITicketEventReader:
         self.glpi_client = glpi_client
         self.related_itemtypes = tuple(related_itemtypes)
 
-    def read_snapshot(self, ticket_id: int) -> TicketActivitySnapshot:
-        ticket = self.glpi_client.get_item("Ticket", ticket_id)
+    def read_ticket(self, ticket_id: int) -> dict:
+        return self.glpi_client.get_item("Ticket", ticket_id)
+
+    def read_snapshot(
+        self,
+        ticket_id: int,
+        *,
+        ticket: dict | None = None,
+    ) -> TicketActivitySnapshot:
+        ticket = ticket or self.read_ticket(ticket_id)
         related_items: dict[str, list[dict]] = {}
         for itemtype in self.related_itemtypes:
             related_items[itemtype] = self._read_related(ticket_id, itemtype)
