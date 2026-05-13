@@ -14,6 +14,8 @@ precisem manter a aplicacao sem redescobrir a arquitetura toda vez.
 - Estado e vinculos: Redis `bot-chamados-redis`.
 - IA local: Ollama `bot-chamados-ollama`, modelo configurado em `.env.docker`.
 - GLPI real: `https://admglpi.terrapremium.com.br/glpi/apirest.php`.
+- Notificacoes de chamados: `bot-chamados-scheduler` agenda o polling e
+  `bot-chamados-worker-glpi` executa a consulta/envio.
 
 ## Regra de ouro
 
@@ -51,6 +53,7 @@ WhatsApp
   -> Redis para estado, vinculo, lock e filas
   -> GLPI REST para usuario/chamados
   -> Celery workers para tarefas de IA e GLPI
+  -> Celery beat scheduler para polling de notificacoes
   -> Ollama para IA local
 ```
 
@@ -120,6 +123,7 @@ Ele pede confirmacao digitando `SIM`.
 botctl restart whatsapp
 botctl restart web
 botctl restart worker-ai worker-glpi
+botctl restart scheduler worker-glpi
 botctl restart
 ```
 
@@ -151,9 +155,38 @@ Servicos validos:
 - `whatsapp`
 - `worker-ai`
 - `worker-glpi`
+- `scheduler`
 - `redis`
 - `ollama`
 - `all`
+
+## Notificacoes de chamados
+
+O envio de atualizacoes do GLPI para WhatsApp depende de tres partes ao mesmo
+tempo:
+
+- `.env.docker` com `TICKET_NOTIFICATIONS_ENABLED=true`.
+- `WHATSAPP_INTERNAL_API_TOKEN` preenchido, igual para backend/scheduler e
+  conector WhatsApp via `env_file`.
+- `scheduler` e `worker-glpi` em execucao.
+
+Diagnostico rapido:
+
+```bash
+botctl status
+botctl logs scheduler --tail 200
+botctl logs worker-glpi --tail 200 -g notification
+```
+
+Depois de alterar qualquer variavel de notificacao, reinicie o monitor:
+
+```bash
+botctl restart scheduler worker-glpi whatsapp web
+```
+
+Se `botctl status` mostrar `Notificacoes GLPI disabled`, confira se
+`TICKET_NOTIFICATIONS_ENABLED` existe no `.env.docker`. Quando a variavel esta
+ausente, a aplicacao assume `false` e nao agenda o polling.
 
 ## Allowlist do WhatsApp
 

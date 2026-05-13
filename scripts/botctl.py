@@ -22,11 +22,18 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(errors="replace")
+    except AttributeError:
+        pass
+
 PROJECT_DIR = Path(os.getenv("BOTCTL_PROJECT_DIR", "/opt/bot-chamados-glpi"))
 ENV_FILE = PROJECT_DIR / ".env.docker"
 COMPOSE_FILE = PROJECT_DIR / "compose.yml"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000"
-SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "redis", "ollama")
+SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "scheduler", "redis", "ollama")
+ENV_RESTART_SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "scheduler")
 SECRET_NAMES = ("TOKEN", "PASSWORD", "PASS", "SECRET", "PEPPER")
 
 CONFIG_MANUAL = {
@@ -67,6 +74,14 @@ CONFIG_MANUAL = {
     "Notificacoes Ativas": {
         "TICKET_NOTIFICATIONS_ENABLED": "Habilita o Worker que monitora mudanças no GLPI e avisa o usuário no WhatsApp.",
         "TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS": "De quanto em quanto tempo o bot consulta mudanças no banco/API do GLPI.",
+        "TICKET_NOTIFICATION_BATCH_SIZE": "Quantidade maxima de chamados monitorados por ciclo de polling.",
+        "TICKET_NOTIFICATION_INTERNAL_NUMBERS": "Numeros internos que recebem aviso quando um chamado novo e aberto.",
+        "TICKET_NOTIFICATION_INTERNAL_UPDATE_NUMBERS": "Numeros internos que recebem copia das atualizacoes dos chamados monitorados.",
+        "TICKET_NOTIFICATION_ERROR_ALERT_NUMBERS": "Numeros que recebem alerta quando o monitoramento ou envio por WhatsApp falha.",
+        "TICKET_NOTIFICATION_INCLUDE_PRIVATE_EVENTS": "Quando true, eventos privados do GLPI tambem geram notificacoes.",
+        "TICKET_NOTIFICATION_WATCH_TTL_DAYS": "Por quantos dias o bot continua observando um chamado aberto.",
+        "TICKET_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS": "Timeout do envio interno para o conector WhatsApp.",
+        "WHATSAPP_OUTBOUND_BASE_URL": "Endereco interno do conector WhatsApp usado para enviar mensagens ativas.",
         "WHATSAPP_INTERNAL_API_TOKEN": "Chave de autenticação interna que permite ao backend web enviar mensagens usando o container do Go.",
     }
 }
@@ -241,6 +256,51 @@ def redact(key: str, value: str) -> str:
     return value
 
 
+def env_truthy(value: str | None) -> bool:
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "sim", "on"}
+
+
+def service_running(containers: list[dict], service_name: str) -> bool:
+    for container in containers:
+        service = str(container.get("Service") or "")
+        state = str(container.get("State") or "").casefold()
+        if service == service_name and state in {"running", "up"}:
+            return True
+    return False
+
+
+def notification_diagnostics(
+    env: dict[str, str],
+    containers: list[dict] | None = None,
+) -> list[list[str]]:
+    enabled_raw = env.get("TICKET_NOTIFICATIONS_ENABLED")
+    if not env_truthy(enabled_raw):
+        detail = (
+            "TICKET_NOTIFICATIONS_ENABLED esta false"
+            if enabled_raw is not None
+            else "TICKET_NOTIFICATIONS_ENABLED ausente; padrao da aplicacao e false"
+        )
+        return [["Notificacoes GLPI", "disabled", detail]]
+
+    problems = []
+    if str(env.get("STATE_BACKEND", "")).strip().casefold() != "redis":
+        problems.append("STATE_BACKEND precisa ser redis")
+    if not env_truthy(env.get("USE_CELERY_WORKERS")):
+        problems.append("USE_CELERY_WORKERS precisa ser true")
+    if str(env.get("GLPI_INTEGRATION_MODE", "")).strip().casefold() != "real":
+        problems.append("GLPI_INTEGRATION_MODE precisa ser real")
+    if not str(env.get("WHATSAPP_INTERNAL_API_TOKEN", "")).strip():
+        problems.append("WHATSAPP_INTERNAL_API_TOKEN ausente")
+    if containers is not None and not service_running(containers, "scheduler"):
+        problems.append("container scheduler nao esta running")
+
+    if problems:
+        return [["Notificacoes GLPI", "degraded", "; ".join(problems)]]
+
+    interval = env.get("TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS", "30")
+    return [["Notificacoes GLPI", "ok", f"poll ativo a cada {interval}s"]]
+
+
 def health_json(path: str) -> dict | None:
     url = DEFAULT_HEALTH_URL + path
     try:
@@ -256,12 +316,12 @@ def print_json(data: object) -> None:
 
 def status(_: argparse.Namespace | None = None) -> None:
     header("ESTADO ATUAL DO SISTEMA")
+    containers: list[dict] = []
     
     # 1. Fetch containers nicely
     try:
         res = compose("ps", "--format", "json", capture=True, check=False)
         # Docker output can be list of lines, each being a JSON
-        containers = []
         for line in res.stdout.strip().splitlines():
             if not line.strip(): continue
             try:
@@ -284,9 +344,14 @@ def status(_: argparse.Namespace | None = None) -> None:
             print_table(["SERVIÇO", "NOME DO CONTAINER", "ESTADO", "DETALHE"], rows)
         else:
             warn("Nenhum container em execução.")
-    except Exception:
+    except Exception as exc:
         info("Containers (Modo Legado)")
-        compose("ps", check=False)
+        try:
+            compose("ps", check=False)
+        except FileNotFoundError:
+            warn("Docker nao encontrado no PATH.")
+        except Exception:
+            warn(f"Nao foi possivel consultar Docker: {exc}")
 
     # 2. Health endpoints in table
     header("RESUMO DE INTEGRAÇÕES")
@@ -309,6 +374,9 @@ def status(_: argparse.Namespace | None = None) -> None:
         val = env.get(key, c("NÃO DEFINIDO", "dim"))
         clean_val = redact(key, str(val))
         print(f"  {c('>', 'cyan')} " + c(key.ljust(25), "white+bold") + " : " + c(clean_val, "yellow"))
+
+    header("NOTIFICACOES DE CHAMADOS")
+    print_table(["MODULO", "STATUS", "INFO"], notification_diagnostics(env, containers))
     print()
 
 
@@ -379,7 +447,7 @@ def env_cmd(args: argparse.Namespace) -> None:
         print(redact(args.key, value))
     elif args.env_action == "set":
         write_env_value(args.key, args.value)
-        warn("Recrie os containers para aplicar: botctl restart web whatsapp worker-ai worker-glpi")
+        warn("Recrie os containers para aplicar: botctl restart " + " ".join(ENV_RESTART_SERVICES))
 
 
 def normalize_phone(phone: str) -> str:
@@ -590,6 +658,7 @@ def interactive(_: argparse.Namespace | None = None) -> None:
             "2": ("Ligar Todos os Serviços", lambda: up(argparse.Namespace(build=False, services=[]))),
             "3": ("Reconstruir (Build) + Ligar", lambda: up(argparse.Namespace(build=True, services=[]))),
             "4": ("Reiniciar Serviço WhatsApp", lambda: restart(argparse.Namespace(services=["whatsapp"]))),
+            "13": ("Reiniciar Monitor de Notificacoes", lambda: restart(argparse.Namespace(services=["scheduler", "worker-glpi"]))),
             "10": ("Desligar e Parar stack", lambda: down(argparse.Namespace(volumes=False, yes=False))),
         },
         "CANAL WHATSAPP": {
@@ -700,6 +769,7 @@ def show_help(_: argparse.Namespace | None = None) -> None:
     print("  botctl up [--build] [servicos]     Sobe os containers (ex: botctl up --build web).")
     print("  botctl down [--volumes]            Para todos os containers e limpa volumes se solicitado.")
     print("  botctl restart [servicos]          Reinicia servicos (ex: botctl restart whatsapp).")
+    print("  botctl restart scheduler worker-glpi  Reinicia o monitor de notificacoes GLPI.")
     print()
     print(c("Logs e Pareamento:", "cyan"))
     print("  botctl logs [servico] [-f]         Mostra logs em tempo real (ex: botctl logs web -f).")
