@@ -110,18 +110,31 @@ class TicketNotificationPipeline:
                 self._stop_watching_terminal(watched_ticket.ticket_id, ticket, summary)
                 return False
             snapshot = self._read_snapshot(watched_ticket.ticket_id, ticket=ticket)
+            self.store.clear_glpi_read_failure_count(watched_ticket.ticket_id)
         except GLPIClientError as exc:
             self.metrics.increment("glpi_read_failures")
             summary["failed"] += 1
+            consecutive_failures = self.store.increment_glpi_read_failure_count(
+                watched_ticket.ticket_id
+            )
             logger.warning(
                 "ticket_notification_glpi_read_failed",
-                extra={"ticket_id": watched_ticket.ticket_id, "error": str(exc)},
+                extra={
+                    "ticket_id": watched_ticket.ticket_id,
+                    "error": str(exc),
+                    "consecutive_failures": consecutive_failures,
+                },
             )
-            self._send_error_alert(
-                reason="falha ao consultar o GLPI",
-                ticket_id=watched_ticket.ticket_id,
-                detail=str(exc),
-            )
+            if consecutive_failures >= max(
+                1,
+                self.settings.ticket_notification_error_alert_consecutive_failures,
+            ):
+                self._send_error_alert(
+                    reason="falha ao consultar o GLPI",
+                    ticket_id=watched_ticket.ticket_id,
+                    detail=str(exc),
+                    global_cooldown=True,
+                )
             self._reschedule_ticket(
                 watched_ticket.ticket_id,
                 summary,
@@ -358,9 +371,11 @@ class TicketNotificationPipeline:
         reason: str,
         ticket_id: int | None = None,
         detail: str = "",
+        global_cooldown: bool = False,
     ) -> None:
         numbers = self._split_numbers(self.settings.ticket_notification_error_alert_numbers)
-        if not numbers or not self._can_send_error_alert(reason, ticket_id):
+        cooldown_target = None if global_cooldown else ticket_id
+        if not numbers or not self._can_send_error_alert(reason, cooldown_target):
             return
 
         message = self.renderer.render_error_alert_message(

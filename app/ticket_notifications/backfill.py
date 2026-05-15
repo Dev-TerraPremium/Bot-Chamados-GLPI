@@ -118,6 +118,8 @@ class TicketNotificationBackfillService:
         for ticket in tickets[: self.settings.ticket_notification_backfill_tickets_per_user]:
             summary["tickets_seen"] += 1
             if ticket.status == TicketStatus.CLOSED.value:
+                if self.store.is_watching(ticket.ticket_number):
+                    self.store.stop_watching(ticket.ticket_number)
                 continue
             if self.store.is_watching(ticket.ticket_number):
                 continue

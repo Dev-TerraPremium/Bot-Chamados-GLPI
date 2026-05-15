@@ -167,6 +167,27 @@ def test_event_detector_creates_baseline_then_detects_new_followup_once():
     assert second_detection == []
 
 
+def test_event_detector_does_not_reemit_old_related_items_after_recent_event_ttl_expires():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client, recent_events_ttl_seconds=1)
+    detector = TicketEventDetector(store)
+    followup = {
+        "id": 99,
+        "content": "<p>Evento antigo.</p>",
+        "date_creation": "2026-05-11 12:30:00",
+        "is_private": 0,
+    }
+
+    detector.detect_new_events(snapshot_with_followups())
+    first_detection = detector.detect_new_events(snapshot_with_followups(followup))
+    for key in list(redis_client.scan_iter("ticket_notifications:event:*")):
+        redis_client.delete(key)
+    second_detection = detector.detect_new_events(snapshot_with_followups(followup))
+
+    assert len(first_detection) == 1
+    assert second_detection == []
+
+
 def test_pipeline_notifies_private_events_by_default():
     redis_client = fakeredis.FakeRedis(decode_responses=True)
     store = TicketNotificationStore(redis_client)
@@ -391,6 +412,7 @@ def test_pipeline_sends_throttled_error_alerts():
             ticket_notification_retry_delay_seconds=0,
             ticket_notification_error_alert_numbers="6699990980",
             ticket_notification_error_alert_cooldown_seconds=300,
+            ticket_notification_error_alert_consecutive_failures=1,
         ),
         redis_client=redis_client,
         event_reader=FailingReader(),
@@ -405,6 +427,87 @@ def test_pipeline_sends_throttled_error_alerts():
     assert second_summary["failed"] == 1
     assert len(dispatcher.sent) == 1
     assert "Falha no monitoramento de chamados" in dispatcher.sent[0][1]
+
+
+def test_pipeline_waits_for_consecutive_glpi_failures_before_alerting():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9145,
+            requester_phone="556699990980",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_poll_interval_seconds=0,
+            ticket_notification_retry_delay_seconds=0,
+            ticket_notification_error_alert_numbers="6699990980",
+            ticket_notification_error_alert_cooldown_seconds=0,
+            ticket_notification_error_alert_consecutive_failures=3,
+        ),
+        redis_client=redis_client,
+        event_reader=FailingReader(),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    pipeline.run_once()
+    pipeline.run_once()
+    assert dispatcher.sent == []
+
+    pipeline.run_once()
+    assert len(dispatcher.sent) == 1
+
+
+def test_pipeline_glpi_error_alerts_use_global_cooldown_across_tickets():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    for ticket_id in (9145, 9146):
+        store.watch_ticket(
+            WatchedTicket(
+                ticket_id=ticket_id,
+                requester_phone="556699990980",
+                requester_name="Pedro Torres",
+                requester_login="pedro.torres",
+                category_name="Sistemas",
+                title=f"Erro no sistema {ticket_id}",
+                location="Matriz",
+                created_at="2026-05-11 12:00:00",
+            )
+        )
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_poll_interval_seconds=0,
+            ticket_notification_retry_delay_seconds=0,
+            ticket_notification_batch_size=2,
+            ticket_notification_error_alert_numbers="6699990980",
+            ticket_notification_error_alert_cooldown_seconds=300,
+            ticket_notification_error_alert_consecutive_failures=1,
+        ),
+        redis_client=redis_client,
+        event_reader=FailingReader(),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    pipeline.run_once()
+
+    assert len(dispatcher.sent) == 1
 
 
 def test_pipeline_sends_ticket_updates_to_teams_channel():
@@ -548,6 +651,7 @@ def test_pipeline_reschedules_failed_reads_so_one_bad_ticket_does_not_starve_que
             ticket_notification_poll_interval_seconds=30,
             ticket_notification_error_alert_numbers="6699990980",
             ticket_notification_error_alert_cooldown_seconds=0,
+            ticket_notification_error_alert_consecutive_failures=1,
         ),
         redis_client=redis_client,
         event_reader=FailingReader(),
@@ -626,6 +730,65 @@ def test_backfill_registers_active_user_tickets_with_baseline_only():
     assert summary["tickets_added"] == 1
     assert store.is_watching(9145)
     assert detector.detect_new_events(reader.read_snapshot(9145)) == []
+
+
+def test_backfill_removes_terminal_tickets_that_are_still_watched():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    redis_client.set(
+        "channel_link:whatsapp:66999990980",
+        (
+            '{"channel":"whatsapp","channel_identifier":"66999990980",'
+            '"status":"active","glpi_user_id":266,"glpi_login":"pedro.torres",'
+            '"display_name":"Pedro"}'
+        ),
+    )
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9301,
+            requester_phone="66999990980",
+            requester_name="Pedro",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Chamado fechado",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    closed_ticket = TicketCreated(
+        ticket_number=9301,
+        title="Chamado fechado",
+        status="Fechado",
+        severity="Baixa",
+        description="Descricao",
+        category_name="Sistemas",
+        requester_login="pedro.torres",
+        glpi_user_id=266,
+        channel="whatsapp",
+        location="Matriz",
+        impact_label="Simples",
+        evidence="",
+        opening_mode="Abertura assistida",
+        created_at="2026-05-11 12:00:00",
+    )
+    service = TicketNotificationBackfillService(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_backfill_interval_seconds=60,
+        ),
+        redis_client=redis_client,
+        glpi_client=FakeBackfillGLPIClient([closed_ticket]),
+        store=store,
+        event_reader=MappingReader({}),
+        detector=TicketEventDetector(store),
+        metrics=NotificationMetricsRecorder(redis_client),
+    )
+
+    service.run_if_due()
+
+    assert not store.is_watching(9301)
 
 
 def test_glpi_event_reader_maps_related_item_endpoints():

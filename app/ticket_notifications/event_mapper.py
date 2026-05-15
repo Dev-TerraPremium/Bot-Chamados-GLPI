@@ -46,7 +46,7 @@ class TicketEventMapper:
         events: list[TicketEvent] = []
         if previous_snapshot:
             events.extend(self._ticket_field_events(snapshot, previous_snapshot))
-        events.extend(self._related_item_events(snapshot))
+        events.extend(self._related_item_events(snapshot, previous_snapshot))
         return events
 
     def comparable_snapshot(self, snapshot: TicketActivitySnapshot) -> dict[str, Any]:
@@ -92,10 +92,18 @@ class TicketEventMapper:
             )
         return events
 
-    def _related_item_events(self, snapshot: TicketActivitySnapshot) -> list[TicketEvent]:
+    def _related_item_events(
+        self,
+        snapshot: TicketActivitySnapshot,
+        previous_snapshot: dict | None,
+    ) -> list[TicketEvent]:
         events: list[TicketEvent] = []
+        previous_signatures = (previous_snapshot or {}).get("related_signatures") or {}
         for itemtype, event_type in RELATED_EVENT_TYPES.items():
+            known_signatures = set(previous_signatures.get(itemtype) or [])
             for item in snapshot.related_items.get(itemtype, []):
+                if previous_snapshot is not None and self._related_signature(itemtype, item) in known_signatures:
+                    continue
                 source_id = self._item_id(item)
                 events.append(
                     TicketEvent(

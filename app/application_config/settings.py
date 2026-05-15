@@ -106,6 +106,7 @@ class AppSettings:
     ticket_notification_internal_update_numbers: str = ""
     ticket_notification_error_alert_numbers: str = ""
     ticket_notification_error_alert_cooldown_seconds: int = 300
+    ticket_notification_error_alert_consecutive_failures: int = 3
     ticket_notification_include_private_events: bool = True
     ticket_notification_watch_ttl_days: int = 30
     ticket_notification_dispatch_timeout_seconds: float = 5.0
@@ -271,6 +272,7 @@ def load_settings() -> AppSettings:
         ticket_notification_internal_update_numbers=os.getenv("TICKET_NOTIFICATION_INTERNAL_UPDATE_NUMBERS", ""),
         ticket_notification_error_alert_numbers=os.getenv("TICKET_NOTIFICATION_ERROR_ALERT_NUMBERS", ""),
         ticket_notification_error_alert_cooldown_seconds=_get_int("TICKET_NOTIFICATION_ERROR_ALERT_COOLDOWN_SECONDS", 300),
+        ticket_notification_error_alert_consecutive_failures=_get_int("TICKET_NOTIFICATION_ERROR_ALERT_CONSECUTIVE_FAILURES", 3),
         ticket_notification_include_private_events=_get_bool("TICKET_NOTIFICATION_INCLUDE_PRIVATE_EVENTS", True),
         ticket_notification_watch_ttl_days=_get_int("TICKET_NOTIFICATION_WATCH_TTL_DAYS", 30),
         ticket_notification_dispatch_timeout_seconds=_get_float("TICKET_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS", 5.0),

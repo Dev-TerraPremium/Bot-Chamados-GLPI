@@ -137,6 +137,15 @@ class TicketNotificationStore:
         for event in events:
             self.mark_event_seen(event)
 
+    def increment_glpi_read_failure_count(self, ticket_id: int) -> int:
+        key = self._glpi_read_failure_key(ticket_id)
+        value = int(self.redis_client.incr(key))
+        self.redis_client.expire(key, self.watch_ttl_seconds)
+        return value
+
+    def clear_glpi_read_failure_count(self, ticket_id: int) -> None:
+        self.redis_client.delete(self._glpi_read_failure_key(ticket_id))
+
     def acquire_poll_lock(self, timeout_seconds: int = 25):
         return self.redis_client.lock(
             self.LOCK_KEY,
@@ -154,3 +163,7 @@ class TicketNotificationStore:
     @staticmethod
     def _snapshot_key(ticket_id: int) -> str:
         return f"ticket_notifications:snapshot:{ticket_id}"
+
+    @staticmethod
+    def _glpi_read_failure_key(ticket_id: int) -> str:
+        return f"ticket_notifications:glpi_read_failures:{ticket_id}"
