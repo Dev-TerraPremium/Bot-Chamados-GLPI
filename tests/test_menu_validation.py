@@ -86,5 +86,5 @@ def test_greeting_returns_main_menu_instead_of_invalid_choice() -> None:
     result = controller.process_message(session_id, "Olá")
 
     assert result.state == "main_menu"
-    assert "Abrir um novo chamado" in result.bot_message
+    assert "Abrir chamado" in result.bot_message
     assert "nÃºmero" not in result.bot_message

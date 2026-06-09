@@ -1534,6 +1534,7 @@ class ConversationFlowController:
         return build_description_review_message(
             context.organized_description or "",
             context.selected_category_name,
+            show_category=self.settings.show_category_in_review,
         )
 
     def _organize_description(

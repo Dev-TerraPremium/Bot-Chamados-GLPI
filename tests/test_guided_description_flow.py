@@ -122,7 +122,8 @@ def test_guided_flow_asks_one_question_and_then_suggests_category() -> None:
     assert clarification.state == "description_clarification"
     assert clarification.bot_message == "Qual equipamento está afetado e o que acontece exatamente?"
     assert category.state == "description_review"
-    assert "Computador / Notebook" in category.bot_message
+    assert "Revise o texto do chamado" in category.bot_message
+    assert "Computador / Notebook" not in category.bot_message
     assert len(detailer.calls) == 2
     assert "É o notebook do financeiro" in category.bot_message
 
@@ -144,7 +145,8 @@ def test_guided_flow_proceeds_with_summary_when_user_skips_answer() -> None:
     result = send(controller, session_id, "não sei")
 
     assert result.state == "description_review"
-    assert "Computador / Notebook" in result.bot_message
+    assert "Revise o texto do chamado" in result.bot_message
+    assert "Computador / Notebook" not in result.bot_message
     assert len(detailer.calls) == 1
 
 
