@@ -140,6 +140,18 @@ class FakeRealGLPIClient:
         )
 
 
+class FlakyRealGLPIClient(FakeRealGLPIClient):
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+
+    def create_ticket(self, ticket_data: dict) -> TicketCreated:
+        self.calls += 1
+        if self.calls == 1:
+            raise GLPIClientError("Nao foi possivel comunicar com o GLPI.")
+        return super().create_ticket(ticket_data)
+
+
 class FakeRealGLPIClientWithAttachmentFailure(FakeRealGLPIClient):
     def create_ticket(self, ticket_data: dict) -> TicketCreated:
         self.payload = ticket_data
@@ -382,6 +394,48 @@ def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() 
     assert glpi_client.payload["glpi_input"]["locations_id"] == 1
     assert glpi_client.payload["glpi_input"]["_users_id_requester"] == 266
     assert usage_tracker.incremented == [544]
+
+
+def test_real_open_ticket_flow_allows_retry_after_glpi_creation_failure() -> None:
+    session_id = str(uuid4())
+    glpi_client = FlakyRealGLPIClient()
+    controller = ConversationFlowController(
+        settings=AppSettings(
+            glpi_integration_mode="real",
+            glpi_base_url="https://glpi.local/apirest.php",
+            glpi_app_token="app",
+            glpi_user_token="user",
+            glpi_default_entity_id=3,
+            glpi_default_profile_id=4,
+            glpi_default_requester_user_id=0,
+            state_backend="memory",
+            use_celery_workers=False,
+            ai_guided_detailing_enabled=False,
+        ),
+        description_organizer=FakeDescriptionOrganizer("Wi-Fi caindo no deposito."),
+        glpi_client=glpi_client,
+        location_service=FakeLocationService(),
+    )
+    controller.category_catalog = FakeRealCatalog()
+    controller.category_matching_service = FakeRealCategorySuggester()
+    controller.category_usage_tracker = FakeUsageTracker()
+
+    send(controller, session_id, "__start__")
+    send(controller, session_id, "1")
+    send(controller, session_id, "1")
+    send(controller, session_id, "wifi caindo no deposito")
+    send(controller, session_id, "1")
+    send(controller, session_id, "2")
+    send(controller, session_id, "Matriz")
+    send(controller, session_id, "2")
+
+    failed_response = send(controller, session_id, "1")
+    assert failed_response["state"] == "final_confirmation"
+    assert "GLPI agora" in failed_response["bot_message"]
+
+    created_response = send(controller, session_id, "1")
+    assert created_response["created_ticket"]["ticket_number"] == 1234
+    assert glpi_client.calls == 2
 
 
 def test_real_open_ticket_flow_requires_valid_glpi_location() -> None:

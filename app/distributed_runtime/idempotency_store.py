@@ -28,6 +28,11 @@ class InMemoryIdempotencyStore:
     def store_result(self, key: str, result: dict[str, Any]) -> None:
         self._items[key] = (monotonic() + self.ttl_seconds, result)
 
+    def release(self, key: str) -> None:
+        item = self._items.get(key)
+        if item and item[1] is None:
+            self._items.pop(key, None)
+
     def clear(self, key_prefix: str) -> None:
         for key in list(self._items):
             if key.startswith(key_prefix):
@@ -70,6 +75,11 @@ class RedisIdempotencyStore:
             self.ttl_seconds,
             json.dumps(result, ensure_ascii=False, separators=(",", ":")),
         )
+
+    def release(self, key: str) -> None:
+        redis_key = self._key(key)
+        if self.redis_client.get(redis_key) == "__reserved__":
+            self.redis_client.delete(redis_key)
 
     def clear(self, key_prefix: str) -> None:
         keys = self.redis_client.keys(self._key(f"{key_prefix}*"))

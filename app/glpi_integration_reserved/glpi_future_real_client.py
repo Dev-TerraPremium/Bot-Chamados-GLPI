@@ -1,6 +1,7 @@
 import logging
 import base64
 import json as jsonlib
+import time
 from typing import Any
 
 import httpx
@@ -13,6 +14,8 @@ from app.ticket_domain.ticket_models import TicketCreated, TicketFollowup
 
 
 logger = logging.getLogger(__name__)
+
+NETWORK_RETRY_DELAYS_SECONDS = (0.5, 1.5)
 
 
 class GLPIClientError(RuntimeError):
@@ -222,24 +225,14 @@ class GLPIRealClient(GLPIClientInterface):
             request_headers.update(headers)
 
         try:
-            client_kwargs: dict[str, Any] = {
-                "base_url": self.base_url,
-                "timeout": self.config.http_timeout_seconds,
-                "follow_redirects": False,
-            }
-            if self._transport is not None:
-                client_kwargs["transport"] = self._transport
-            with httpx.Client(
-                **client_kwargs,
-            ) as client:
-                response = client.request(
-                    method,
-                    path,
-                    headers=request_headers,
-                    params=params,
-                    json=json,
-                )
-                response.raise_for_status()
+            response = self._send_with_network_retry(
+                method,
+                path,
+                headers=request_headers,
+                params=params,
+                json=json,
+            )
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             if self._should_retry_after_unauthorized(
                 exc,
@@ -286,6 +279,40 @@ class GLPIRealClient(GLPIClientInterface):
             return {"items": payload}
         return payload
 
+    def _send_with_network_retry(
+        self,
+        method: str,
+        path: str,
+        **request_kwargs: Any,
+    ) -> httpx.Response:
+        attempts = len(NETWORK_RETRY_DELAYS_SECONDS) + 1
+        for attempt in range(1, attempts + 1):
+            try:
+                client_kwargs: dict[str, Any] = {
+                    "base_url": self.base_url,
+                    "timeout": self.config.http_timeout_seconds,
+                    "follow_redirects": False,
+                }
+                if self._transport is not None:
+                    client_kwargs["transport"] = self._transport
+                with httpx.Client(**client_kwargs) as client:
+                    return client.request(method, path, **request_kwargs)
+            except httpx.HTTPError as exc:
+                if attempt >= attempts:
+                    raise
+                logger.warning(
+                    "glpi_network_retry",
+                    extra={
+                        "method": method,
+                        "path": path,
+                        "attempt": attempt,
+                        "max_attempts": attempts,
+                        "error": str(exc),
+                    },
+                )
+                time.sleep(NETWORK_RETRY_DELAYS_SECONDS[attempt - 1])
+        raise RuntimeError("unreachable")
+
     def _request_multipart(
         self,
         method: str,
@@ -301,21 +328,13 @@ class GLPIRealClient(GLPIClientInterface):
             "Session-Token": self.init_session(),
         }
         try:
-            client_kwargs: dict[str, Any] = {
-                "base_url": self.base_url,
-                "timeout": self.config.http_timeout_seconds,
-                "follow_redirects": False,
-            }
-            if self._transport is not None:
-                client_kwargs["transport"] = self._transport
-            with httpx.Client(**client_kwargs) as client:
-                response = client.request(
-                    method,
-                    path,
-                    headers=request_headers,
-                    files=files,
-                )
-                response.raise_for_status()
+            response = self._send_with_network_retry(
+                method,
+                path,
+                headers=request_headers,
+                files=files,
+            )
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             if self._should_retry_after_unauthorized(
                 exc,

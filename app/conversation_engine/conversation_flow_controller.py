@@ -1129,10 +1129,15 @@ class ConversationFlowController:
             draft = self.ticket_factory.create_draft_from_context(context)
             payload = self.glpi_payload_builder.build_from_ticket_draft(draft)
             created_ticket = self.glpi_client.create_ticket(payload)
-        except (GLPIClientError, ValueError):
+        except (GLPIClientError, ValueError) as exc:
+            self.idempotency_store.release(idempotency_key)
             logger.exception(
                 "glpi_ticket_creation_failed",
-                extra={"session_id": context.session_id},
+                extra={
+                    "session_id": context.session_id,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                },
             )
             return self._result(
                 context,

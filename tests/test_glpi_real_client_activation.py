@@ -40,6 +40,43 @@ def test_glpi_real_client_activates_profile_and_entity_after_session() -> None:
     assert client.calls[2][2]["json"] == {"entities_id": 3, "is_recursive": True}
 
 
+def test_glpi_real_client_retries_transient_network_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.glpi_integration_reserved.glpi_future_real_client.time.sleep",
+        lambda _: None,
+    )
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "session"})
+        if (
+            request.url.path.endswith("/changeActiveProfile")
+            and calls.count(request.url.path) == 1
+        ):
+            raise httpx.ConnectError(
+                "[Errno -5] No address associated with hostname",
+                request=request,
+            )
+        if request.url.path.endswith("/changeActiveProfile"):
+            return httpx.Response(200, json={"ok": True})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = GLPIRealClient(
+        GLPIIntegrationConfig(
+            base_url="https://glpi.local/apirest.php",
+            app_token="app",
+            user_token="user",
+            default_profile_id=4,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert client.init_session() == "session"
+    assert calls.count("/apirest.php/changeActiveProfile") == 2
+
+
 def test_glpi_real_client_requires_explicit_flag_for_http() -> None:
     client = GLPIRealClient(
         GLPIIntegrationConfig(

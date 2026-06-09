@@ -88,6 +88,19 @@ def test_redis_idempotency_store_prevents_duplicate_reservation() -> None:
     assert store.get_result("abc") == {"ticket_number": 123}
 
 
+def test_redis_idempotency_store_releases_only_pending_reservation() -> None:
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = RedisIdempotencyStore(redis_client, ttl_seconds=60)
+
+    assert store.reserve("abc")
+    store.release("abc")
+    assert store.reserve("abc")
+
+    store.store_result("abc", {"ticket_number": 123})
+    store.release("abc")
+    assert store.get_result("abc") == {"ticket_number": 123}
+
+
 def test_redis_session_lock_fails_fast_when_conversation_is_busy() -> None:
     redis_client = fakeredis.FakeRedis(decode_responses=True)
     lock = RedisSessionLock(redis_client, timeout_seconds=60)
