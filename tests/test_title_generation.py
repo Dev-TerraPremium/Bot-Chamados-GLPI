@@ -20,8 +20,19 @@ def test_static_title_generator_does_not_prefix_category() -> None:
         "Solicito a compra de um kit mouse e teclado.",
     )
 
-    assert title == "Solicito a compra de um kit mouse e teclado"
+    assert title == "Kit mouse e teclado"
     assert "INFRAESTRUTURA" not in title
+
+
+def test_static_title_generator_summarizes_object_and_symptom() -> None:
+    title = TitleGenerationService().generate_title(
+        "INFRAESTRUTURA > COMPUTADORES",
+        "Estou com um problema aqui no meu computador. Está fazendo muito barulho na ventoinha.",
+    )
+
+    assert title == "Computador com barulho excessivo"
+    assert "muito barul" not in title
+    assert not title.endswith("barul")
 
 
 def test_generative_title_generator_strips_category_prefix_from_model_output() -> None:
@@ -38,6 +49,26 @@ def test_generative_title_generator_strips_category_prefix_from_model_output() -
     assert title == "Mouse com falha no clique"
     assert "INFRAESTRUTURA" not in title
     assert "Categoria" not in client.user_prompt
+
+
+def test_generative_title_generator_uses_functional_fallback_when_ai_fails() -> None:
+    class FailingTitleClient:
+        def generate_json(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            options: dict,
+        ) -> dict:
+            raise RuntimeError("IA indisponivel")
+
+    generator = GenerativeTitleGenerator(client=FailingTitleClient())
+
+    title = generator.generate_title(
+        "INFRAESTRUTURA > COMPUTADORES",
+        "Estou com um problema aqui no meu computador. Está fazendo muito barulho na ventoinha.",
+    )
+
+    assert title == "Computador com barulho excessivo"
 
 
 def test_title_builder_is_deterministic_by_default(monkeypatch) -> None:
@@ -57,5 +88,5 @@ def test_title_builder_is_deterministic_by_default(monkeypatch) -> None:
         "Estou com problema de nota na tela 1234.",
     )
 
-    assert title == "Estou com problema de nota na tela 1234"
+    assert title == "Nota na tela 1234"
     assert fake_client.user_prompt == ""

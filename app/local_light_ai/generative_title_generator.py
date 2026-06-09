@@ -20,9 +20,10 @@ class GenerativeTitleGenerator:
         system_prompt = (
             "Voce e um gerador de titulos curtos para chamados de TI.\n"
             "Crie um titulo natural, direto e com no maximo 10 palavras.\n"
+            "O titulo deve resumir objeto + sintoma, sem copiar a frase inteira.\n"
             "Nao inclua categoria, caminho de categoria, setor interno, solicitante "
             "ou metadados.\n"
-            "Exemplo bom: Mouse com falha no clique.\n"
+            "Exemplos bons: Computador com barulho excessivo; Mouse com falha no clique.\n"
             "Retorne estritamente em JSON com a chave 'title'."
         )
         user_prompt = (
@@ -46,19 +47,14 @@ class GenerativeTitleGenerator:
         except Exception:
             pass
 
-        return self._clean_title(description[:70].strip(), category_name)
+        return TitleGenerationService().generate_title(category_name, description)
 
     @staticmethod
     def _clean_title(title: str, category_name: str) -> str:
-        title = re.sub(r"\s+", " ", title).strip(" .:-")
-        category = re.sub(r"\s+", " ", category_name or "").strip()
-        if category and title.casefold().startswith(category.casefold()):
-            title = title[len(category) :].strip(" .:-")
-        if " - " in title and ">" in title.split(" - ", maxsplit=1)[0]:
-            title = title.split(" - ", maxsplit=1)[1].strip()
-        if ">" in title:
-            title = title.split(">")[-1].strip(" .:-")
-        return (title or "Chamado de TI")[:100]
+        return TitleGenerationService.clean_title(
+            re.sub(r"\s+", " ", title),
+            category_name,
+        )
 
 
 def build_generative_title_generator(
