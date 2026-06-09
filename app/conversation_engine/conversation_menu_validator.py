@@ -24,10 +24,7 @@ class ConversationMenuValidator:
             return MenuValidationResult(
                 is_valid=False,
                 choice=None,
-                message=(
-                    "⚠️ Não entendi a opção. Responda apenas com o "
-                    "**número** de uma das opções exibidas."
-                ),
+                message="⚠️ Opção inválida. Responda só com o número de uma das opções.",
             )
         if choice not in allowed_choices:
             allowed = ", ".join(str(item) for item in sorted(allowed_choices))

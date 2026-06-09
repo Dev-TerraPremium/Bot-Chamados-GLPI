@@ -197,11 +197,12 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
 
     send(controller, session_id, "__start__")
     open_prompt = send(controller, session_id, "1")
-    assert "Relato da Solicitação" in open_prompt["bot_message"]
+    assert "Conte o que aconteceu" in open_prompt["bot_message"]
 
     category_response = send(controller, session_id, "wifi caindo no deposito")
     assert category_response["state"] == "description_review"
-    assert "Ubiquiti / Wi-Fi" in category_response["bot_message"]
+    assert "Revise o texto do chamado" in category_response["bot_message"]
+    assert "Ubiquiti / Wi-Fi" not in category_response["bot_message"]
 
     send(controller, session_id, "1")
     send(controller, session_id, "2")
@@ -232,14 +233,14 @@ def test_open_ticket_flow_review_keeps_category_autonomous() -> None:
     send(controller, session_id, "1")
     first_review = send(controller, session_id, "Estou com meu acesso a pasta RH bloqueado")
     assert first_review["state"] == "description_review"
-    assert "Acesso / Senha" in first_review["bot_message"]
+    assert "Acesso / Senha" not in first_review["bot_message"]
 
     review_response = send(controller, session_id, "9")
     assert review_response["state"] == "description_review"
 
     reopen_prompt = send(controller, session_id, "2")
     assert reopen_prompt["state"] == "description_collection"
-    assert "Relato da Solicitação" in reopen_prompt["bot_message"]
+    assert "Conte o que aconteceu" in reopen_prompt["bot_message"]
 
 
 def test_open_ticket_flow_uses_natural_final_summary_and_separate_cancel_messages() -> None:
@@ -368,7 +369,7 @@ def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() 
     send(controller, session_id, "1")
     category_response = send(controller, session_id, "wifi caindo no deposito")
     assert category_response["state"] == "description_review"
-    assert "INFRAESTRUTURA > REDES > WI-FI" in category_response["bot_message"]
+    assert "INFRAESTRUTURA > REDES > WI-FI" not in category_response["bot_message"]
 
     send(controller, session_id, "1")
     send(controller, session_id, "2")
