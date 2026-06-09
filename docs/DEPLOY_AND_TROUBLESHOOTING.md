@@ -63,7 +63,7 @@ No arquivo `app/authentication_and_identity/glpi_user_identity_lookup_service.py
     names=("Administrative number", "Registration number", "Matricula"),
 )
 ```
-* **O Problema:** O bot assume que o CPF do usuário está cadastrado no campo padrão do GLPI chamado **"Administrative number"**, **"Registration number"** ou **"Matricula"**. Se na sua instalação do GLPI o CPF do Pedro estiver salvo em um **Campo Personalizado (Custom Field / Plugin Fields)**, o bot lerá o campo padrão como vazio (`""`). Como vazio não bate com os 4 primeiros dígitos digitados, a validação falha sempre.
+* **O Problema:** O bot assume que o CPF do usuário está cadastrado no campo padrão do GLPI chamado **"Administrative number"**, **"Registration number"** ou **"Matricula"**. Se na sua instalação do GLPI o CPF do Pedro estiver salvo em um **Campo Personalizado (Custom Field / Plugin Fields)**, o bot lerá o campo padrão como vazio (`""`). Como vazio não bate com os primeiros dígitos digitados, a validação falha sempre.
 
 ### 🔬 Causa Raiz B: Formato de Telefone incompatível no GLPI
 A busca inicial do usuário é filtrada estritamente pelo número de celular do WhatsApp:

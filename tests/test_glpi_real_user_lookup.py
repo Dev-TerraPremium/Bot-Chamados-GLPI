@@ -54,7 +54,7 @@ def build_client(rows: list[dict], search_options: dict | None = None) -> GLPIRe
     )
 
 
-def test_glpi_real_user_lookup_matches_phone_and_cpf_prefix() -> None:
+def test_glpi_real_user_lookup_matches_cpf_prefix() -> None:
     lookup = GLPIRealUserIdentityLookupService(
         build_client(
             [
@@ -63,7 +63,7 @@ def test_glpi_real_user_lookup_matches_phone_and_cpf_prefix() -> None:
                     "1": "pedro.torres",
                     "9": "Pedro",
                     "34": "Américo Paletot de Alcântara Torres",
-                    "5": "66999990980",
+                    "5": "66000000000",
                     "6": "",
                     "7": "",
                     "8": "099.150.671-51",
@@ -74,17 +74,14 @@ def test_glpi_real_user_lookup_matches_phone_and_cpf_prefix() -> None:
         )
     )
 
-    candidates = lookup.find_active_candidates_by_channel_phone_and_cpf_prefix(
-        "556699990980",
-        "0991",
-    )
+    candidates = lookup.find_active_candidates_by_cpf_prefix("099150")
 
     assert len(candidates) == 1
     assert candidates[0].id == 266
     assert candidates[0].name == "pedro.torres"
 
 
-def test_glpi_real_user_lookup_matches_formatted_phone_and_cpf_text() -> None:
+def test_glpi_real_user_lookup_matches_formatted_cpf_text() -> None:
     lookup = GLPIRealUserIdentityLookupService(
         build_client(
             [
@@ -93,7 +90,7 @@ def test_glpi_real_user_lookup_matches_formatted_phone_and_cpf_text() -> None:
                     "1": "pedro.torres",
                     "9": "Pedro",
                     "34": "Americo Paletot de Alcantara Torres",
-                    "5": "+55 (66) 99999-0980",
+                    "5": "+55 (66) 00000-0000",
                     "8": "CPF: 099.150.671-51",
                     "10": 1,
                 }
@@ -101,10 +98,7 @@ def test_glpi_real_user_lookup_matches_formatted_phone_and_cpf_text() -> None:
         )
     )
 
-    candidates = lookup.find_active_candidates_by_channel_phone_and_cpf_prefix(
-        "5566999990980",
-        "0991",
-    )
+    candidates = lookup.find_active_candidates_by_cpf_prefix("099150")
 
     assert len(candidates) == 1
     assert candidates[0].id == 266
@@ -136,16 +130,13 @@ def test_glpi_real_user_lookup_accepts_cpf_search_option_field() -> None:
         )
     )
 
-    candidates = lookup.find_active_candidates_by_channel_phone_and_cpf_prefix(
-        "66999990980",
-        "0991",
-    )
+    candidates = lookup.find_active_candidates_by_cpf_prefix("099150")
 
     assert len(candidates) == 1
     assert candidates[0].id == 266
 
 
-def test_glpi_real_user_lookup_returns_multiple_candidates_for_ambiguous_phone() -> None:
+def test_glpi_real_user_lookup_returns_multiple_candidates_for_ambiguous_cpf_prefix() -> None:
     lookup = GLPIRealUserIdentityLookupService(
         build_client(
             [
@@ -155,7 +146,7 @@ def test_glpi_real_user_lookup_returns_multiple_candidates_for_ambiguous_phone()
                     "9": "Joao",
                     "34": "Silva",
                     "5": "66988887777",
-                    "8": "1234",
+                    "8": "12345678901",
                     "10": 1,
                 },
                 {
@@ -164,17 +155,14 @@ def test_glpi_real_user_lookup_returns_multiple_candidates_for_ambiguous_phone()
                     "9": "Maria",
                     "34": "Souza",
                     "5": "66988887777",
-                    "8": "1239",
+                    "8": "12345699999",
                     "10": 1,
                 },
             ]
         )
     )
 
-    candidates = lookup.find_active_candidates_by_channel_phone_and_cpf_prefix(
-        "66988887777",
-        "123",
-    )
+    candidates = lookup.find_active_candidates_by_cpf_prefix("123456")
 
     assert {candidate.id for candidate in candidates} == {300, 301}
 
@@ -196,7 +184,37 @@ def test_glpi_real_user_lookup_can_match_cpf_without_phone() -> None:
         )
     )
 
-    candidates = lookup.find_active_candidates_by_cpf_prefix("0991")
+    candidates = lookup.find_active_candidates_by_cpf_prefix("099150")
+
+    assert len(candidates) == 1
+    assert candidates[0].id == 266
+
+
+def test_glpi_real_user_lookup_can_match_cpf_without_phone_search_options() -> None:
+    lookup = GLPIRealUserIdentityLookupService(
+        build_client(
+            [
+                {
+                    "2": 266,
+                    "1": "pedro.torres",
+                    "9": "Pedro",
+                    "34": "Americo Paletot de Alcantara Torres",
+                    "8": "099.150.671-51",
+                    "10": 1,
+                }
+            ],
+            search_options={
+                "2": {"name": "ID", "field": "id"},
+                "1": {"name": "Login", "field": "name"},
+                "9": {"name": "First name", "field": "firstname"},
+                "34": {"name": "Surname", "field": "realname"},
+                "8": {"name": "Registration number", "field": "registration_number"},
+                "10": {"name": "Active", "field": "is_active"},
+            },
+        )
+    )
+
+    candidates = lookup.find_active_candidates_by_cpf_prefix("099150")
 
     assert len(candidates) == 1
     assert candidates[0].id == 266

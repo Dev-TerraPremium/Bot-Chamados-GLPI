@@ -30,13 +30,13 @@ def test_normalize_cpf():
 
 
 def test_cpf_partial_validation_match():
-    validator = DocumentPartialValidator(pepper="test", prefix_length=4)
-    assert validator.compare_partial_with_full("0991", "09915067151") is True
+    validator = DocumentPartialValidator(pepper="test", prefix_length=6)
+    assert validator.compare_partial_with_full("099150", "09915067151") is True
 
 
 def test_cpf_partial_validation_mismatch():
-    validator = DocumentPartialValidator(pepper="test", prefix_length=4)
-    assert validator.compare_partial_with_full("0992", "09915067151") is False
+    validator = DocumentPartialValidator(pepper="test", prefix_length=6)
+    assert validator.compare_partial_with_full("099151", "09915067151") is False
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def linking_service():
         audit_service=MockChannelLinkAuditService(),
         lookup_service=MockGLPIUserIdentityLookupService(),
         pepper="test_pepper",
-        prefix_length=4,
+        prefix_length=6,
         max_attempts=3,
         allow_web_simulator_auto_user=False,
     )
@@ -56,9 +56,9 @@ def test_link_success_flow(linking_service):
     res = linking_service.resolve_or_handle("whatsapp", "66999990980", "Oi")
     assert not res.is_linked
     assert res.requires_user_action
-    assert "identifiquei o telefone com final" in res.bot_message.lower()
+    assert "6 primeiros dígitos" in res.bot_message.lower()
 
-    res2 = linking_service.resolve_or_handle("whatsapp", "66999990980", "0991")
+    res2 = linking_service.resolve_or_handle("whatsapp", "66999990980", "099150")
     assert not res2.is_linked
     assert res2.requires_user_action
     assert "vínculo criado com sucesso" in res2.bot_message.lower()
@@ -70,28 +70,41 @@ def test_link_success_flow(linking_service):
     assert res3.user.glpi_user_id == 266
 
 
+def test_link_success_ignores_channel_phone_when_cpf_prefix_matches(linking_service):
+    linking_service.resolve_or_handle("whatsapp", "66000000000", "Oi")
+
+    res = linking_service.resolve_or_handle("whatsapp", "66000000000", "099150")
+
+    assert "vínculo criado com sucesso" in res.bot_message.lower()
+    linked = linking_service.resolve_or_handle("whatsapp", "66000000000", "Oi")
+    assert linked.is_linked
+    assert linked.user is not None
+    assert linked.user.glpi_user_id == 266
+
+
 def test_link_ambiguity_flow(linking_service):
     res = linking_service.resolve_or_handle("whatsapp", "66988887777", "Oi")
     assert not res.is_linked
 
-    res2 = linking_service.resolve_or_handle("whatsapp", "66988887777", "1234")
+    res2 = linking_service.resolve_or_handle("whatsapp", "66988887777", "123456")
     assert not res2.is_linked
+    assert res2.is_blocked
 
 
 def test_link_failure_and_block_flow(linking_service):
     linking_service.resolve_or_handle("whatsapp", "66999990980", "Oi")
 
-    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "9999")
+    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "999999")
     assert "não consegui confirmar" in res.bot_message.lower()
 
-    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "8888")
+    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "888888")
     assert "não consegui confirmar" in res.bot_message.lower()
 
-    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "7777")
+    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "777777")
     assert "bloqueado por segurança" in res.bot_message.lower()
     assert res.is_blocked
 
-    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "0991")
+    res = linking_service.resolve_or_handle("whatsapp", "66999990980", "099150")
     assert "bloqueado por segurança" in res.bot_message.lower()
 
 
@@ -101,7 +114,7 @@ def test_teams_linking_uses_channel_identifier_without_phone_normalization(linki
     assert res.requires_user_action
     assert "microsoft teams" in res.bot_message.lower()
 
-    res2 = linking_service.resolve_or_handle("teams", "29:teams-user-id", "0991")
+    res2 = linking_service.resolve_or_handle("teams", "29:teams-user-id", "099150")
     assert not res2.is_linked
     assert "vínculo criado com sucesso" in res2.bot_message.lower()
 

@@ -254,12 +254,15 @@ botctl restart whatsapp
 
 ## Autenticacao e vinculo de canal
 
-Quando um telefone fala com o bot pela primeira vez:
+Quando um canal fala com o bot pela primeira vez:
 
 1. O bot cria chave Redis `channel_link:whatsapp:<telefone>`.
 2. Responde pedindo os primeiros digitos do CPF.
-3. Consulta usuario no GLPI cruzando telefone + CPF parcial.
+3. Consulta usuario no GLPI usando somente os 6 primeiros digitos do CPF.
 4. Se encontra exatamente 1 usuario, grava vinculo ativo no Redis.
+
+O telefone identifica a conversa e a chave Redis, mas nao valida a identidade
+contra o cadastro do GLPI.
 
 Ver chaves de vinculo:
 
@@ -278,6 +281,15 @@ Apagar so o vinculo de um telefone, sem destruir todo o Redis:
 ```bash
 botctl redis delete-link 66999990980
 ```
+
+Apagar todos os vinculos de autenticacao antigos e conversas ativas, sem limpar
+filas ou outros estados do Redis:
+
+```bash
+botctl redis reset-auth -y
+```
+
+Esse comando remove `channel_link:*` e `conversation:*`.
 
 Evite `FLUSHALL`. So use como ultimo recurso:
 
@@ -316,8 +328,7 @@ Correcoes aplicadas:
 - Apos buscar de forma ampla, o codigo filtra por telefone normalizado para
   reduzir falso positivo.
 - Logs estruturados foram adicionados:
-  - `glpi_user_phone_search_completed`
-  - `glpi_user_identity_lookup_completed`
+  - `glpi_user_cpf_lookup_completed`
 
 Evidencia apos deploy:
 
@@ -325,7 +336,7 @@ Evidencia apos deploy:
 - `initSession`, `changeActiveProfile`, `changeActiveEntities`,
   `listSearchOptions/User`, `listSearchOptions/ITILCategory` e
   `listSearchOptions/Ticket` retornaram OK.
-- Smoke test via API com telefone `66999990980` e CPF parcial `0991` retornou
+- Smoke test via API com telefone `66999990980` e CPF parcial `099150` retornou
   vinculo criado para `glpi_user_id=266`.
 - Depois do smoke test, o vinculo foi removido para permitir teste real pelo
   WhatsApp.
@@ -435,7 +446,7 @@ curl -s -X POST http://127.0.0.1:8000/api/conversation/message \
 
 curl -s -X POST http://127.0.0.1:8000/api/conversation/message \
   -H 'Content-Type: application/json' \
-  -d '{"session_id":"ops-check","channel":"whatsapp","channel_identifier":"66999990980","message":"0991"}'
+  -d '{"session_id":"ops-check","channel":"whatsapp","channel_identifier":"66999990980","message":"099150"}'
 ```
 
 Depois limpe o vinculo criado:

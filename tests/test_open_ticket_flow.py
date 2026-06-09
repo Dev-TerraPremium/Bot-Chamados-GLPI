@@ -258,11 +258,10 @@ def test_open_ticket_flow_uses_natural_final_summary_and_separate_cancel_message
     summary_response = send(controller, session_id, "2")
 
     assert summary_response["state"] == "final_confirmation"
-    assert "Seu chamado será aberto na categoria" in summary_response["bot_message"]
-    assert "Posso abrir seu chamado agora?" in summary_response["bot_message"]
-    assert "na localidade **Matriz**" in summary_response["bot_message"]
-    assert "Categoria:" not in summary_response["bot_message"]
-    assert "Resumo:" not in summary_response["bot_message"]
+    assert "Confira os dados antes de abrir o chamado" in summary_response["bot_message"]
+    assert "**Categoria:** Ubiquiti / Wi-Fi" in summary_response["bot_message"]
+    assert "**Localidade:** Matriz" in summary_response["bot_message"]
+    assert "Digite o número da opção desejada" in summary_response["bot_message"]
 
     cancel_response = send(controller, session_id, "3")
 
@@ -416,7 +415,7 @@ def test_real_open_ticket_flow_requires_valid_glpi_location() -> None:
     invalid_location = send(controller, session_id, "unidade inexistente")
 
     assert invalid_location["state"] == "location_collection"
-    assert "Digite apenas" in invalid_location["bot_message"]
+    assert "Digite o número da localidade desejada" in invalid_location["bot_message"]
 
 
 def test_real_open_ticket_flow_accepts_numbered_glpi_location_choice() -> None:
@@ -450,7 +449,7 @@ def test_real_open_ticket_flow_accepts_numbered_glpi_location_choice() -> None:
     send(controller, session_id, "1")
     location_prompt = send(controller, session_id, "1")
     assert location_prompt["state"] == "location_collection"
-    assert "Digite apenas" in location_prompt["bot_message"]
+    assert "Digite o número da localidade desejada" in location_prompt["bot_message"]
 
     evidence_prompt = send(controller, session_id, "2")
 

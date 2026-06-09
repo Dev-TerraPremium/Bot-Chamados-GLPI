@@ -8,7 +8,7 @@ Este projeto cria a fundação modular do "Assistente de Chamados TI On-Premise"
 
 ## Escopo do MVP
 
-- Vínculo de identidade por canal (telefone + CPF parcial).
+- Vínculo de identidade por canal com confirmação pelos 6 primeiros dígitos do CPF.
 - Motor de conversa orientado por estados.
 - Abertura única de chamado, sem duplicidade entre rápido e detalhado.
 - Atribuição automática de categoria por descrição, com escolha manual opcional.
@@ -24,7 +24,7 @@ Este projeto cria a fundação modular do "Assistente de Chamados TI On-Premise"
 
 ## Ainda nao implementado
 
-Ainda não há Telegram real, WhatsApp real, Microsoft Teams real, upload real de anexos ou envio de mensagens externas. A integração GLPI real já existe por API REST, mas deve ser ativada por variáveis de ambiente e validada com credenciais fora do Git. A autenticação agora exige verificação inicial dos 4 primeiros dígitos do CPF caso o telefone não esteja vinculado.
+Ainda não há Telegram real, WhatsApp real, Microsoft Teams real, upload real de anexos ou envio de mensagens externas. A integração GLPI real já existe por API REST, mas deve ser ativada por variáveis de ambiente e validada com credenciais fora do Git. A autenticação agora exige verificação inicial dos 6 primeiros dígitos do CPF e não valida mais o número de telefone contra o cadastro do GLPI.
 
 ## Instalar
 
@@ -143,6 +143,7 @@ botctl doctor
 botctl logs whatsapp -f
 botctl allowlist show
 botctl redis delete-link 66999990980
+botctl redis reset-auth -y
 ```
 
 O deploy instala `botctl` em `/usr/local/bin` apontando para

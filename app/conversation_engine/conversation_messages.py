@@ -35,10 +35,10 @@ def build_open_ticket_prompt() -> str:
 def build_ticket_type_prompt() -> str:
     return (
         "🛠️ **Classificação da Demanda**\n\n"
-        "Para direcionar sua solicitação ao técnico correto, selecione o tipo de atendimento:\n\n"
+        "Para direcionar sua solicitação ao técnico correto, selecione o tipo de atendimento.\n\n"
+        "Digite o número da opção desejada:\n"
         "1️⃣ **Estou com um problema** (Algo parou de funcionar ou está com erro)\n"
-        "2️⃣ **Preciso de algo novo** (Acessos, equipamentos ou novas instalações)\n\n"
-        "Digite o número correspondente:"
+        "2️⃣ **Preciso de algo novo** (Acessos, equipamentos ou novas instalações)"
     )
 
 
@@ -56,6 +56,7 @@ def build_query_menu() -> str:
     return (
         "📂 **Meus Chamados**\n\n"
         "Como você deseja localizar seus tickets?\n\n"
+        "Digite o número da opção desejada:\n"
         "1️⃣ 🟢 **Chamados em aberto**\n"
         "2️⃣ 🔵 **Chamados em atendimento**\n"
         "3️⃣ 🕒 **Ver histórico recente**\n"
@@ -87,6 +88,7 @@ def build_description_review_message(
         "Confira como sua solicitação será enviada ao técnico:\n\n"
         f'📝 "{organized_text}"\n\n'
         "O texto reflete bem o seu problema?\n\n"
+        "Digite o número da opção desejada:\n"
         "1️⃣ **Sim, continuar**\n"
         "2️⃣ **Não, quero ajustar o texto**\n"
         "3️⃣ **Usar meu texto original**\n"
@@ -110,7 +112,7 @@ def build_location_prompt(
         return (
             "🏢 **Localidade do Chamado**\n\n"
             f"{prefix}"
-            "Digite apenas o número da localidade:\n"
+            "Digite o número da localidade desejada:\n"
             f"{rendered_options}"
         )
     if retry:
@@ -133,6 +135,7 @@ def build_evidence_question() -> str:
     return (
         "📸 **Fotos e Evidências**\n\n"
         "Você quer enviar fotos, prints ou documentos para ajudar na análise?\n\n"
+        "Digite o número da opção desejada:\n"
         "1️⃣ **Sim, enviar anexos**\n"
         "2️⃣ **Não, seguir sem anexos**"
     )
@@ -144,6 +147,7 @@ def build_complement_review_message(rewritten_text: str) -> str:
         "Veja como sua atualização será registrada no chamado:\n\n"
         f'💬 "{rewritten_text}"\n\n'
         "Confirmar envio?\n\n"
+        "Digite o número da opção desejada:\n"
         "1️⃣ **Sim, adicionar ao chamado**\n"
         "2️⃣ **Não, ajustar o texto**\n"
         "3️⃣ **Cancelar**"

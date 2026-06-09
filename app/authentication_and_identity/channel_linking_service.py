@@ -25,7 +25,7 @@ class ChannelLinkingService:
         audit_service: ChannelLinkAuditService,
         lookup_service: GLPIUserIdentityLookupServiceInterface,
         pepper: str,
-        prefix_length: int = 4,
+        prefix_length: int = 6,
         max_attempts: int = 3,
         allow_web_simulator_auto_user: bool = False,
     ):
@@ -132,12 +132,7 @@ class ChannelLinkingService:
 
         cpf_prefix = cpf_prefix[:self.prefix_length]
         
-        if self._is_phone_bound_channel(link.channel):
-            candidates = self.lookup_service.find_active_candidates_by_channel_phone_and_cpf_prefix(
-                link.channel_identifier, cpf_prefix
-            )
-        else:
-            candidates = self.lookup_service.find_active_candidates_by_cpf_prefix(cpf_prefix)
+        candidates = self.lookup_service.find_active_candidates_by_cpf_prefix(cpf_prefix)
         
         if len(candidates) == 1:
             user_data = candidates[0]
@@ -204,26 +199,22 @@ class ChannelLinkingService:
             )
 
     def _build_link_start_message(self, channel: str, normalized_id: str) -> str:
+        del normalized_id
         channel_name = (channel or "").strip().casefold()
-        if self._is_phone_bound_channel(channel_name):
+        if channel_name == "whatsapp":
             return (
                 "🔐 **Segurança e Identificação**\n\n"
-                "Olá! Para começarmos, preciso vincular este número de WhatsApp ao seu perfil no sistema de chamados.\n\n"
-                f"Identifiquei o telefone com final **{normalized_id[-4:]}**.\n\n"
-                f"Por favor, digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+                "Olá! Para começarmos, preciso confirmar seu perfil no sistema de chamados.\n\n"
+                f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF:"
             )
         if channel_name == "teams":
             return (
                 "🔐 **Segurança e Identificação**\n\n"
-                "Olá! Para começarmos, preciso vincular este usuário do Microsoft Teams ao seu perfil no sistema de chamados.\n\n"
-                f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+                "Olá! Para começarmos no Microsoft Teams, preciso confirmar seu perfil no sistema de chamados.\n\n"
+                f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF:"
             )
         return (
             "🔐 **Segurança e Identificação**\n\n"
-            "Olá! Para começarmos, preciso vincular este canal ao seu perfil no sistema de chamados.\n\n"
-            f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF para confirmar sua identidade:"
+            "Olá! Para começarmos, preciso confirmar seu perfil no sistema de chamados.\n\n"
+            f"Digite apenas os **{self.prefix_length} primeiros dígitos** do seu CPF:"
         )
-
-    @staticmethod
-    def _is_phone_bound_channel(channel: str) -> bool:
-        return (channel or "").strip().casefold() in {"whatsapp", "web_simulator"}

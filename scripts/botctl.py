@@ -495,11 +495,14 @@ def allowlist(args: argparse.Namespace) -> None:
 
 
 def redis_cli(*parts: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return run(
-        ["docker", "exec", "bot-chamados-redis", "redis-cli", *parts],
-        check=check,
-        capture=capture,
-    )
+    try:
+        return run(
+            ["docker", "exec", "bot-chamados-redis", "redis-cli", *parts],
+            check=check,
+            capture=capture,
+        )
+    except FileNotFoundError:
+        fail("Docker nao encontrado no PATH. Execute este comando no servidor ou em um ambiente com Docker.")
 
 
 def redis_cmd(args: argparse.Namespace) -> None:
@@ -527,6 +530,29 @@ def redis_cmd(args: argparse.Namespace) -> None:
         result = redis_cli("DEL", key, capture=True, check=False)
         print((result.stdout or "").strip())
         ok(f"Chave removida se existia: {key}")
+    elif args.redis_action == "reset-auth":
+        if args.yes or confirm("Isto remove vinculos de autenticacao e conversas ativas. Continuar?"):
+            keys = []
+            for pattern in ("channel_link:*", "conversation:*"):
+                result = redis_cli("--scan", "--pattern", pattern, capture=True, check=False)
+                keys.extend(
+                    item.strip()
+                    for item in (result.stdout or "").splitlines()
+                    if item.strip()
+                )
+            if not keys:
+                warn("Nenhum vinculo de autenticacao ou conversa ativa encontrado.")
+                return
+            deleted = 0
+            for auth_key in sorted(set(keys)):
+                deleted_result = redis_cli("DEL", auth_key, capture=True, check=False)
+                try:
+                    deleted += int((deleted_result.stdout or "0").strip() or "0")
+                except ValueError:
+                    pass
+            ok(f"Vinculos de autenticacao e conversas ativas removidos: {deleted}")
+        else:
+            warn("Cancelado.")
     elif args.redis_action == "flush":
         if args.yes or confirm("FLUSHALL apaga estado, vinculos e filas Redis. Continuar?"):
             redis_cli("FLUSHALL")
@@ -797,6 +823,7 @@ def show_help(_: argparse.Namespace | None = None) -> None:
     print("  botctl redis keys                  Lista todas as chaves de vinculos de sessao.")
     print("  botctl redis show-link [FONE]      Mostra dados de login e CPF vinculados ao telefone.")
     print("  botctl redis delete-link [FONE]    Remove o vinculo e forca nova autenticacao via CPF.")
+    print("  botctl redis reset-auth            Remove vinculos de autenticacao e conversas ativas.")
     print("  botctl redis flush                 Apaga todos os vinculos, estados e filas do Redis.\n")
     print("Para ajuda do proprio interpretador, digite: " + c("botctl --help", "yellow") + "\n")
 
@@ -868,6 +895,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_show_link.add_argument("phone")
     p_delete_link = redis_sub.add_parser("delete-link")
     p_delete_link.add_argument("phone")
+    p_reset_auth = redis_sub.add_parser("reset-auth")
+    p_reset_auth.add_argument("-y", "--yes", action="store_true")
     p_flush = redis_sub.add_parser("flush")
     p_flush.add_argument("-y", "--yes", action="store_true")
     p_redis.set_defaults(func=redis_cmd)

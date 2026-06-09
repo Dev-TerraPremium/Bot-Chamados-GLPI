@@ -128,7 +128,7 @@ def get_category_by_name(category_name: str) -> CategoryOption | None:
 def render_category_menu() -> str:
     return (
         "📚 **Catálogo de Serviços**\n\n"
-        "Selecione a categoria que melhor descreve sua necessidade:\n"
+        "Digite o número da categoria que melhor descreve sua necessidade:\n"
         "1️⃣ **Internet e Conectividade**\n"
         "2️⃣ **Computador ou Notebook**\n"
         "3️⃣ **Sistemas e ERP**\n"

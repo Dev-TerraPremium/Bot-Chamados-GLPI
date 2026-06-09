@@ -86,7 +86,7 @@ class AppSettings:
     glpi_ticket_public_url_template: str = ""
     expose_debug_routes: bool = True
     channel_linking_mode: str = "mock"
-    channel_link_cpf_prefix_length: int = 4
+    channel_link_cpf_prefix_length: int = 6
     channel_link_hmac_pepper: str = "changeme"
     channel_link_max_failed_attempts: int = 3
     channel_link_allow_web_simulator_auto_user: bool = True
@@ -252,7 +252,7 @@ def load_settings() -> AppSettings:
         glpi_ticket_public_url_template=os.getenv("GLPI_TICKET_PUBLIC_URL_TEMPLATE", ""),
         expose_debug_routes=_get_bool("EXPOSE_DEBUG_ROUTES", True),
         channel_linking_mode=os.getenv("CHANNEL_LINKING_MODE", "mock"),
-        channel_link_cpf_prefix_length=_get_int("CHANNEL_LINK_CPF_PREFIX_LENGTH", 4),
+        channel_link_cpf_prefix_length=_get_int("CHANNEL_LINK_CPF_PREFIX_LENGTH", 6),
         channel_link_hmac_pepper=os.getenv("CHANNEL_LINK_HMAC_PEPPER", "changeme"),
         channel_link_max_failed_attempts=_get_int("CHANNEL_LINK_MAX_FAILED_ATTEMPTS", 3),
         channel_link_allow_web_simulator_auto_user=_get_bool("CHANNEL_LINK_ALLOW_WEB_SIMULATOR_AUTO_USER", True),
