@@ -44,7 +44,7 @@ class AppSettings:
     local_generative_model: str = "qwen2.5:0.5b"
     local_generative_timeout_seconds: float = 30.0
     google_ai_api_key: str = ""
-    google_ai_model: str = "gemini-3.1-flash-lite"
+    google_ai_model: str = "gemini-2.5-flash-lite"
     google_ai_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     google_ai_timeout_seconds: float = 12.0
     google_ai_max_retries: int = 1
@@ -196,7 +196,7 @@ def load_settings() -> AppSettings:
             "LOCAL_GENERATIVE_TIMEOUT_SECONDS", 30.0
         ),
         google_ai_api_key=os.getenv("GOOGLE_AI_API_KEY", ""),
-        google_ai_model=os.getenv("GOOGLE_AI_MODEL", "gemini-3.1-flash-lite"),
+        google_ai_model=os.getenv("GOOGLE_AI_MODEL", "gemini-2.5-flash-lite"),
         google_ai_base_url=os.getenv(
             "GOOGLE_AI_BASE_URL",
             "https://generativelanguage.googleapis.com/v1beta",
