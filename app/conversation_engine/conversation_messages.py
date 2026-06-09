@@ -5,40 +5,38 @@ def build_main_menu(user: AuthenticatedUser, opening_only: bool = False) -> str:
     if opening_only:
         return (
             f"👋 Olá, **{user.first_name}**!\n"
-            f"Você está conectado como **{user.login}** no Suporte TI - Terra Premium.\n\n"
-            "Como posso ajudar agora?\n\n"
-            "Digite o número da opção desejada:\n"
-            "1️⃣ **Abrir um novo chamado**\n"
+            f"Você entrou como **{user.login}** no Suporte TI - Terra Premium.\n\n"
+            "O que você quer fazer?\n\n"
+            "Digite o número:\n"
+            "1️⃣ **Abrir chamado**\n"
             "2️⃣ **Encerrar atendimento**"
         )
     return (
         f"👋 Olá, **{user.first_name}**!\n"
-        f"Você está conectado como **{user.login}** no Suporte TI - Terra Premium.\n\n"
-        "Como posso ajudar agora?\n\n"
-        "Digite o número da opção desejada:\n"
-        "1️⃣ **Abrir um novo chamado**\n"
-        "2️⃣ **Consultar meus chamados**\n"
-        "3️⃣ **Complementar chamado existente**\n"
+        f"Você entrou como **{user.login}** no Suporte TI - Terra Premium.\n\n"
+        "O que você quer fazer?\n\n"
+        "Digite o número:\n"
+        "1️⃣ **Abrir chamado**\n"
+        "2️⃣ **Consultar chamados**\n"
+        "3️⃣ **Complementar chamado**\n"
         "4️⃣ **Encerrar atendimento**"
     )
 
 
 def build_open_ticket_prompt() -> str:
     return (
-        "📝 **Relato da Solicitação**\n\n"
-        "Descreva o que está acontecendo ou o que você precisa.\n\n"
-        "Se faltar algum detalhe, eu vou te perguntar em seguida.\n\n"
-        "Pode digitar sua descrição agora:"
+        "Conte o que aconteceu ou o que você precisa, Se faltar alguma informação, "
+        "eu peço depois.\n\n"
+        "Digite de maneira completa sua mensagem, descreva o máximo de detalhes:"
     )
 
 
 def build_ticket_type_prompt() -> str:
     return (
-        "🛠️ **Classificação da Demanda**\n\n"
-        "Para direcionar sua solicitação ao técnico correto, selecione o tipo de atendimento:\n\n"
-        "1️⃣ **Estou com um problema** (Algo parou de funcionar ou está com erro)\n"
-        "2️⃣ **Preciso de algo novo** (Acessos, equipamentos ou novas instalações)\n\n"
-        "Digite o número correspondente:"
+        "Escolha o tipo da sua solicitação:\n\n"
+        "1️⃣ **Estou com um problema** (algo parou de funcionar ou está com erro)\n"
+        "2️⃣ **Preciso de algo novo** (acesso, equipamento ou instalação)\n\n"
+        "Digite o número:"
     )
 
 
@@ -54,42 +52,40 @@ def build_description_clarification_message(
 
 def build_query_menu() -> str:
     return (
-        "📂 **Meus Chamados**\n\n"
-        "Como você deseja localizar seus tickets?\n\n"
-        "1️⃣ 🟢 **Chamados em aberto**\n"
-        "2️⃣ 🔵 **Chamados em atendimento**\n"
-        "3️⃣ 🕒 **Ver histórico recente**\n"
-        "4️⃣ 🔢 **Buscar por número (ID)**\n"
-        "5️⃣ ⬅️ **Voltar ao início**"
+        "Veja seus chamados:\n\n"
+        "1️⃣ 🟢 **Em aberto**\n"
+        "2️⃣ 🔵 **Em atendimento**\n"
+        "3️⃣ 🕒 **Histórico recente**\n"
+        "4️⃣ 🔢 **Buscar por número**\n"
+        "5️⃣ ⬅️ **Voltar**"
     )
 
 
 def build_invalid_option_message() -> str:
     return (
-        "⚠️ Não entendi a opção. Responda apenas com o **número** "
-        "de uma das opções exibidas."
+        "⚠️ Opção inválida. Responda só com o número de uma das opções."
     )
 
 
 def build_description_review_message(
     organized_text: str,
     category_name: str | None = None,
+    show_category: bool = False,
 ) -> str:
     category_block = ""
-    if category_name:
+    if show_category and category_name:
         category_block = (
             "Categoria definida para o chamado:\n"
             f"📂 **{category_name}**\n\n"
         )
     return (
-        "👁️ **Revisão do Chamado**\n\n"
+        "Revise o texto do chamado:\n\n"
         f"{category_block}"
-        "Confira como sua solicitação será enviada ao técnico:\n\n"
         f'📝 "{organized_text}"\n\n'
-        "O texto reflete bem o seu problema?\n\n"
+        "Está certo?\n\n"
         "1️⃣ **Sim, continuar**\n"
-        "2️⃣ **Não, quero ajustar o texto**\n"
-        "3️⃣ **Usar meu texto original**\n"
+        "2️⃣ **Quero ajustar**\n"
+        "3️⃣ **Usar texto original**\n"
         "4️⃣ **Cancelar**"
     )
 
