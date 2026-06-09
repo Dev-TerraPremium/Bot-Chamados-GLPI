@@ -56,12 +56,16 @@ class GLPITicketEventReader:
     def _read_related(self, ticket_id: int, itemtype: str) -> list[dict]:
         try:
             response = self.glpi_client.get_ticket_related_items(ticket_id, itemtype)
-        except GLPIClientError:
+        except GLPIClientError as exc:
             logger.warning(
                 "ticket_notification_related_read_failed",
-                extra={"ticket_id": ticket_id, "itemtype": itemtype},
+                extra={
+                    "ticket_id": ticket_id,
+                    "itemtype": itemtype,
+                    "error": str(exc),
+                },
             )
-            return []
+            raise
         items = [item for item in response.get("items", []) if isinstance(item, dict)]
         if itemtype == "Ticket_User":
             return [self._enrich_ticket_user(item) for item in items]
