@@ -24,12 +24,11 @@ def render_impact_menu() -> str:
     return (
         "🚦 **Nível de Impacto**\n\n"
         "Como esse problema está afetando seu trabalho agora?\n\n"
-        "Digite o número da opção desejada:\n"
         "1️⃣ 🟢 Apenas uma dúvida ou pedido simples.\n"
         "2️⃣ 🟡 Consigo trabalhar, mas com dificuldades.\n"
         "3️⃣ 🟠 Não consigo trabalhar por causa disso.\n"
         "4️⃣ 🔴 Afeta várias pessoas ou um setor inteiro.\n\n"
-        "Escolha a opção mais próxima da sua situação."
+        "Digite o número da opção:"
     )
 
 

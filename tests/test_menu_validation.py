@@ -69,7 +69,7 @@ def test_location_accepts_numbered_menu_choice() -> None:
     result = controller.process_message(session_id, "1")
 
     assert result.state == "location_collection"
-    assert "Digite o número da localidade desejada" in result.bot_message
+    assert "Digite apenas" in result.bot_message
 
     evidence_result = controller.process_message(session_id, "2")
 

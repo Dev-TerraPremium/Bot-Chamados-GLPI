@@ -38,15 +38,11 @@ class TicketSummaryBuilder:
         evidence = self._render_evidence_phrase(summary.evidence)
         return (
             "🏁 **Revisão Final**\n\n"
-            "Confira os dados antes de abrir o chamado:\n\n"
-            f"📂 **Categoria:** {category}\n"
-            f"📝 **Descrição:** {description}\n"
-            f"🚦 **Impacto:** {impact}\n"
-            f"📍 **Localidade:** {location}\n"
-            f"📎 **Evidências:** {evidence}\n\n"
-            "Se estiver tudo certo, confirme a abertura.\n"
-            "Se precisar ajustar algo, escolha a opção de correção.\n\n"
-            "Digite o número da opção desejada:\n"
+            f'Seu chamado será aberto na categoria **{category}**. '
+            f'O resumo que será enviado é: "{description}". '
+            f'O impacto informado é **{impact}**, na localidade **{location}**, '
+            f"e {evidence}\n\n"
+            "Posso abrir seu chamado agora?\n\n"
             "1️⃣ **Sim, confirmar abertura**\n"
             "2️⃣ **Preciso corrigir algo**\n"
             "3️⃣ **Desistir e cancelar**"
@@ -55,7 +51,7 @@ class TicketSummaryBuilder:
     def _render_evidence_phrase(self, evidence: str) -> str:
         normalized = (evidence or "").strip()
         if not normalized or normalized == "Não informado":
-            return "Nenhuma evidência informada"
+            return "você não enviou anexos."
         if normalized == "Anexos enviados pelo WhatsApp.":
-            return "Anexos enviados pelo WhatsApp"
-        return normalized
+            return "você enviou anexos pelo WhatsApp."
+        return f'as evidências registradas foram: "{normalized}".'

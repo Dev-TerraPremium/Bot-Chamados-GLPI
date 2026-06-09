@@ -679,7 +679,6 @@ class ConversationFlowController:
             "Encontrei uma correspondência para sua pesquisa:\n"
             f"📍 **{category_match.category_name}**\n\n"
             "Podemos usar esta categoria?\n\n"
-            "Digite o número da opção desejada:\n"
             "1️⃣ **Sim, confirmar**\n"
             "2️⃣ **Não, pesquisar novamente**\n"
             "3️⃣ **Usar categoria \"Outros\"**",
@@ -1748,7 +1747,7 @@ class ConversationFlowController:
         lines = [
             f"**{title}**",
             "",
-            "Digite o número da opção desejada:",
+            "Digite no teclado o **número** da opção desejada:",
         ]
         for index, category in enumerate(categories[:5], start=1):
             lines.append(f"{self._keycap(index)} **{category.display_name}**")
