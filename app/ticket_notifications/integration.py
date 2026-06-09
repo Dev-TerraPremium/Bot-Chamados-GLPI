@@ -76,7 +76,14 @@ def _send_internal_ticket_opened_notification(
         ticket_url_template=settings.glpi_ticket_public_url_template
     )
     message = renderer.render_internal_ticket_opened(watched_ticket, created_ticket)
+    requester_keys = {
+        _recipient_key(watched_ticket.requester_phone),
+        _recipient_key(watched_ticket.channel_identifier),
+    }
     for number in numbers:
+        if _recipient_key(number) in requester_keys:
+            metrics.increment("internal_open_notifications_deduplicated")
+            continue
         result = dispatcher.send_message(number, message)
         if result.ok:
             metrics.increment("internal_notifications_sent")
@@ -86,3 +93,10 @@ def _send_internal_ticket_opened_notification(
 
 def _split_numbers(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _recipient_key(phone: str) -> str:
+    digits = "".join(char for char in str(phone or "") if char.isdigit())
+    if digits.startswith("55") and len(digits) > 10:
+        digits = digits[2:]
+    return digits

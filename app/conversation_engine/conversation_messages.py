@@ -67,28 +67,6 @@ def build_invalid_option_message() -> str:
     )
 
 
-def build_description_review_message(
-    organized_text: str,
-    category_name: str | None = None,
-    show_category: bool = False,
-) -> str:
-    category_block = ""
-    if show_category and category_name:
-        category_block = (
-            "Categoria definida para o chamado:\n"
-            f"📂 **{category_name}**\n\n"
-        )
-    return (
-        "Revise o texto do chamado:\n\n"
-        f"{category_block}"
-        f'📝 "{organized_text}"\n\n'
-        "Está certo?\n\n"
-        "1️⃣ **Sim, continuar**\n"
-        "2️⃣ **Quero ajustar**\n"
-        "3️⃣ **Usar texto original**\n"
-        "4️⃣ **Cancelar**"
-    )
-
 def build_location_prompt(
     retry: bool = False,
     options: list[dict] | None = None,

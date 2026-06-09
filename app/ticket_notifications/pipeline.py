@@ -12,6 +12,10 @@ from app.ticket_notifications.event_reader import GLPITicketEventReader
 from app.ticket_notifications.event_store import TicketNotificationStore
 from app.ticket_notifications.message_renderer import TicketNotificationMessageRenderer
 from app.ticket_notifications.metrics_recorder import NotificationMetricsRecorder
+from app.ticket_notifications.status_rules import (
+    is_monitorable_ticket,
+    is_terminal_status,
+)
 from app.ticket_notifications.whatsapp_dispatcher import WhatsAppNotificationDispatcher
 from app.microsoft_teams.dispatcher import TeamsNotificationDispatcher
 
@@ -103,15 +107,22 @@ class TicketNotificationPipeline:
     def _process_ticket(self, watched_ticket, summary: dict[str, int]) -> bool:
         try:
             ticket = self._read_ticket(watched_ticket.ticket_id)
-            if ticket and self._is_terminal_ticket(ticket) and not self._should_read_terminal_snapshot(
-                watched_ticket.ticket_id,
-                ticket,
-            ):
+            if ticket and not self._is_monitorable_ticket(ticket):
                 self._stop_watching_terminal(watched_ticket.ticket_id, ticket, summary)
                 return False
             snapshot = self._read_snapshot(watched_ticket.ticket_id, ticket=ticket)
+            if not self._is_monitorable_ticket(snapshot.ticket):
+                self._stop_watching_terminal(watched_ticket.ticket_id, snapshot.ticket, summary)
+                return False
             self.store.clear_glpi_read_failure_count(watched_ticket.ticket_id)
         except GLPIClientError as exc:
+            if self._is_missing_ticket_error(exc):
+                self._stop_watching_terminal(
+                    watched_ticket.ticket_id,
+                    {"id": watched_ticket.ticket_id, "status": "deleted"},
+                    summary,
+                )
+                return False
             self.metrics.increment("glpi_read_failures")
             summary["failed"] += 1
             consecutive_failures = self.store.increment_glpi_read_failure_count(
@@ -182,10 +193,6 @@ class TicketNotificationPipeline:
                 summary=summary,
             )
 
-        status = str(snapshot.ticket.get("status") or "")
-        if self._is_terminal_status(status):
-            self._stop_watching_terminal(watched_ticket.ticket_id, snapshot.ticket, summary)
-            return False
         return True
 
     def _read_ticket(self, ticket_id: int) -> dict | None:
@@ -199,14 +206,6 @@ class TicketNotificationPipeline:
             return self.event_reader.read_snapshot(ticket_id, ticket=ticket)
         except TypeError:
             return self.event_reader.read_snapshot(ticket_id)
-
-    def _should_read_terminal_snapshot(self, ticket_id: int, ticket: dict) -> bool:
-        previous_snapshot = self.store.get_snapshot(ticket_id)
-        if not previous_snapshot:
-            return False
-        previous_status = str((previous_snapshot.get("ticket") or {}).get("status") or "")
-        current_status = str(ticket.get("status") or "")
-        return bool(previous_status and previous_status != current_status)
 
     def _stop_watching_terminal(
         self,
@@ -245,12 +244,20 @@ class TicketNotificationPipeline:
         return self._is_terminal_status(str((ticket or {}).get("status") or ""))
 
     def _is_terminal_status(self, status: str) -> bool:
-        terminal = {
-            item.strip()
-            for item in self.settings.ticket_notification_terminal_statuses.split(",")
-            if item.strip()
-        }
-        return status in terminal
+        return is_terminal_status(
+            status,
+            self.settings.ticket_notification_terminal_statuses,
+        )
+
+    def _is_monitorable_ticket(self, ticket: dict | None) -> bool:
+        return is_monitorable_ticket(
+            ticket,
+            self.settings.ticket_notification_terminal_statuses,
+        )
+
+    @staticmethod
+    def _is_missing_ticket_error(exc: GLPIClientError) -> bool:
+        return getattr(exc, "status_code", 0) in {404, 410}
 
     @staticmethod
     def _stable_jitter_seconds(ticket_id: int, base_delay_seconds: int) -> int:

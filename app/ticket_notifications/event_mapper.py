@@ -122,14 +122,11 @@ class TicketEventMapper:
         return events
 
     def _related_signature(self, itemtype: str, item: dict[str, Any]) -> str:
-        return "|".join(
-            [
-                itemtype,
-                self._item_id(item),
-                self._occurred_at(item),
-                self._content(item),
-            ]
-        )
+        item_id = self._item_id(item)
+        parts = [itemtype, item_id, self._content(item)]
+        if not item_id:
+            parts.append(self._occurred_at(item))
+        return "|".join(parts)
 
     @staticmethod
     def _item_id(item: dict[str, Any]) -> str:

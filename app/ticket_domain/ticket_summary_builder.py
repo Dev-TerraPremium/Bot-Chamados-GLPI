@@ -29,29 +29,3 @@ class TicketSummaryBuilder:
             evidence=evidence,
             suggested_title=context.suggested_title or "",
         )
-
-    def render_summary_message(self, summary: TicketSummary) -> str:
-        category = summary.category or "Sem categoria definida"
-        description = summary.description or "Sem descrição informada"
-        impact = summary.impact or "Impacto não informado"
-        location = summary.location or "Localidade não informada"
-        evidence = self._render_evidence_phrase(summary.evidence)
-        return (
-            "🏁 **Revisão Final**\n\n"
-            f'Seu chamado será aberto na categoria **{category}**. '
-            f'O resumo que será enviado é: "{description}". '
-            f'O impacto informado é **{impact}**, na localidade **{location}**, '
-            f"e {evidence}\n\n"
-            "Posso abrir seu chamado agora?\n\n"
-            "1️⃣ **Sim, confirmar abertura**\n"
-            "2️⃣ **Preciso corrigir algo**\n"
-            "3️⃣ **Desistir e cancelar**"
-        )
-
-    def _render_evidence_phrase(self, evidence: str) -> str:
-        normalized = (evidence or "").strip()
-        if not normalized or normalized == "Não informado":
-            return "você não enviou anexos."
-        if normalized == "Anexos enviados pelo WhatsApp.":
-            return "você enviou anexos pelo WhatsApp."
-        return f'as evidências registradas foram: "{normalized}".'

@@ -7,12 +7,12 @@ import time
 from redis import Redis
 
 from app.application_config.settings import AppSettings
-from app.ticket_domain.ticket_enums import TicketStatus
 from app.ticket_notifications.event_detector import TicketEventDetector
 from app.ticket_notifications.event_reader import GLPITicketEventReader
 from app.ticket_notifications.event_store import TicketNotificationStore
 from app.ticket_notifications.metrics_recorder import NotificationMetricsRecorder
 from app.ticket_notifications.models import WatchedTicket
+from app.ticket_notifications.status_rules import is_monitorable_status
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,10 @@ class TicketNotificationBackfillService:
 
         for ticket in tickets[: self.settings.ticket_notification_backfill_tickets_per_user]:
             summary["tickets_seen"] += 1
-            if ticket.status == TicketStatus.CLOSED.value:
+            if not is_monitorable_status(
+                ticket.status,
+                self.settings.ticket_notification_terminal_statuses,
+            ):
                 if self.store.is_watching(ticket.ticket_number):
                     self.store.stop_watching(ticket.ticket_number)
                 continue

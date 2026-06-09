@@ -70,6 +70,12 @@ def send(controller: ConversationFlowController, session_id: str, message: str):
     return controller.process_message(session_id=session_id, message=message)
 
 
+def organized_text(controller: ConversationFlowController, session_id: str) -> str:
+    context = controller.conversation_store.get(session_id)
+    assert context is not None
+    return context.organized_description or ""
+
+
 def test_guided_flow_can_ask_two_contextual_questions_before_finalizing() -> None:
     detailer = SequencedDetailer(
         [
@@ -99,6 +105,6 @@ def test_guided_flow_can_ask_two_contextual_questions_before_finalizing() -> Non
     assert first_question.bot_message == "Poderia me detalhar o que está acontecendo exatamente?"
     assert second_question.state == "description_clarification"
     assert second_question.bot_message == "Qual sistema ou funcionalidade exatamente apresenta esse comportamento?"
-    assert result.state == "description_review"
-    assert "Outlook" in result.bot_message
+    assert result.state == "impact_selection"
+    assert "Outlook" in organized_text(controller, session_id)
     assert len(detailer.calls) == 3

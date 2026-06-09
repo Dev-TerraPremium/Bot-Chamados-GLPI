@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 class GLPIClientError(RuntimeError):
     """Raised when GLPI refuses or fails an operation."""
 
+    def __init__(self, message: str, *, status_code: int = 0) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class GLPIRealClient(GLPIClientInterface):
     """GLPI REST API client used by production mode."""
@@ -271,7 +275,10 @@ class GLPIRealClient(GLPIClientInterface):
                     "body": safe_body,
                 },
             )
-            raise GLPIClientError("GLPI recusou a operacao solicitada.") from exc
+            raise GLPIClientError(
+                "GLPI recusou a operacao solicitada.",
+                status_code=exc.response.status_code,
+            ) from exc
         except httpx.HTTPError as exc:
             logger.warning(
                 "glpi_http_error",
@@ -344,7 +351,10 @@ class GLPIRealClient(GLPIClientInterface):
                     "body": safe_body,
                 },
             )
-            raise GLPIClientError("GLPI recusou o envio de anexo.") from exc
+            raise GLPIClientError(
+                "GLPI recusou o envio de anexo.",
+                status_code=exc.response.status_code,
+            ) from exc
         except httpx.HTTPError as exc:
             logger.warning(
                 "glpi_multipart_http_error",

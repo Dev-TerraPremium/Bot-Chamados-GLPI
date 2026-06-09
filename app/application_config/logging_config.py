@@ -22,6 +22,11 @@ STRUCTURED_EXTRA_FIELDS = (
     "confidence",
     "method",
     "path",
+    "ticket_id",
+    "itemtype",
+    "consecutive_failures",
+    "events",
+    "event_types",
     "error",
     "body",
 )

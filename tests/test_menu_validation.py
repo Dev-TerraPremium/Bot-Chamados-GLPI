@@ -39,7 +39,7 @@ def test_main_menu_rejects_text_when_choice_is_required() -> None:
     assert "número" in result.bot_message
 
 
-def test_category_assignment_rejects_unavailable_choice() -> None:
+def test_impact_selection_rejects_unavailable_choice_after_description() -> None:
     controller = ConversationFlowController(
         settings=AppSettings(ai_guided_detailing_enabled=False),
         description_organizer=FakeDescriptionOrganizer()
@@ -51,7 +51,7 @@ def test_category_assignment_rejects_unavailable_choice() -> None:
     controller.process_message(session_id, "wifi caindo no deposito")
     result = controller.process_message(session_id, "9")
 
-    assert result.state == "description_review"
+    assert result.state == "impact_selection"
     assert "não está disponível" in result.bot_message
 
 
@@ -65,7 +65,6 @@ def test_location_accepts_numbered_menu_choice() -> None:
     controller.process_message(session_id, "__start__")
     controller.process_message(session_id, "1")
     controller.process_message(session_id, "wifi caindo no deposito")
-    controller.process_message(session_id, "1")
     result = controller.process_message(session_id, "1")
 
     assert result.state == "location_collection"

@@ -58,7 +58,6 @@ CONFIG_MANUAL = {
         "AI_GUIDED_DETAILING_ENABLED": "Habilita a IA a fazer perguntas dinâmicas de acompanhamento para enriquecer o relato.",
         "AI_MAX_CLARIFICATION_QUESTIONS": "Limite máximo de perguntas que o robô fará antes de aceitar a descrição final.",
         "AI_MAX_INPUT_CHARS": "Proteção de contexto da IA: trunca o input do usuário se passar deste tamanho.",
-        "SHOW_CATEGORY_IN_REVIEW": "Quando true, exibe a categoria selecionada na revisão do chamado. O padrão false mantém a categoria oculta para o usuário.",
     },
     "Seguranca & Autenticacao": {
         "CHANNEL_LINKING_MODE": "Define como vincular WhatsApp e Login: 'real' busca CPF no GLPI, 'mock' aceita dados genéricos.",

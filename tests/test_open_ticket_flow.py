@@ -199,19 +199,21 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
     open_prompt = send(controller, session_id, "1")
     assert "Conte o que aconteceu" in open_prompt["bot_message"]
 
-    category_response = send(controller, session_id, "wifi caindo no deposito")
-    assert category_response["state"] == "description_review"
-    assert "Revise o texto do chamado" in category_response["bot_message"]
-    assert "Ubiquiti / Wi-Fi" not in category_response["bot_message"]
+    impact_response = send(controller, session_id, "wifi caindo no deposito")
+    assert impact_response["state"] == "impact_selection"
+    assert "Revise o texto do chamado" not in impact_response["bot_message"]
+    assert "Ubiquiti / Wi-Fi" not in impact_response["bot_message"]
 
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "Matriz")
     summary_response = send(controller, session_id, "2")
     assert summary_response["ticket_preview"]["category"] == "Ubiquiti / Wi-Fi"
+    assert "Posso abrir seu chamado agora?" in summary_response["bot_message"]
+    assert "Revisão Final" not in summary_response["bot_message"]
 
     created_response = send(controller, session_id, "1")
-    assert "Chamado Aberto com Sucesso!" in created_response["bot_message"]
+    assert "Solicitação registrada com sucesso." in created_response["bot_message"]
+    assert created_response["bot_messages"] is None
     assert (
         f"https://glpi.local/front/ticket.form.php?id={created_response['created_ticket']['ticket_number']}"
         in created_response["bot_message"]
@@ -220,7 +222,7 @@ def test_open_ticket_flow_uses_automatic_category_assignment() -> None:
     assert created_response["created_ticket"]["category_name"] == "Ubiquiti / Wi-Fi"
 
 
-def test_open_ticket_flow_review_keeps_category_autonomous() -> None:
+def test_open_ticket_flow_skips_description_review_and_keeps_category_autonomous() -> None:
     session_id = str(uuid4())
     controller = ConversationFlowController(
         settings=AppSettings(ai_guided_detailing_enabled=False),
@@ -231,16 +233,13 @@ def test_open_ticket_flow_review_keeps_category_autonomous() -> None:
 
     send(controller, session_id, "__start__")
     send(controller, session_id, "1")
-    first_review = send(controller, session_id, "Estou com meu acesso a pasta RH bloqueado")
-    assert first_review["state"] == "description_review"
-    assert "Acesso / Senha" not in first_review["bot_message"]
+    impact_response = send(controller, session_id, "Estou com meu acesso a pasta RH bloqueado")
+    assert impact_response["state"] == "impact_selection"
+    assert "Revise o texto do chamado" not in impact_response["bot_message"]
+    assert "Acesso / Senha" not in impact_response["bot_message"]
 
-    review_response = send(controller, session_id, "9")
-    assert review_response["state"] == "description_review"
-
-    reopen_prompt = send(controller, session_id, "2")
-    assert reopen_prompt["state"] == "description_collection"
-    assert "Conte o que aconteceu" in reopen_prompt["bot_message"]
+    invalid_response = send(controller, session_id, "9")
+    assert invalid_response["state"] == "impact_selection"
 
 
 def test_open_ticket_flow_uses_natural_final_summary_and_separate_cancel_messages() -> None:
@@ -253,19 +252,18 @@ def test_open_ticket_flow_uses_natural_final_summary_and_separate_cancel_message
     send(controller, session_id, "__start__")
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "Matriz")
     summary_response = send(controller, session_id, "2")
 
     assert summary_response["state"] == "final_confirmation"
-    assert "Seu chamado será aberto na categoria" in summary_response["bot_message"]
     assert "Posso abrir seu chamado agora?" in summary_response["bot_message"]
-    assert "na localidade **Matriz**" in summary_response["bot_message"]
+    assert "Revisão Final" not in summary_response["bot_message"]
+    assert "Seu chamado será aberto na categoria" not in summary_response["bot_message"]
     assert "Categoria:" not in summary_response["bot_message"]
     assert "Resumo:" not in summary_response["bot_message"]
 
-    cancel_response = send(controller, session_id, "3")
+    cancel_response = send(controller, session_id, "2")
 
     assert cancel_response["state"] == "main_menu"
     assert cancel_response["bot_message"] == "❌ **Chamado cancelado com segurança.**"
@@ -329,14 +327,14 @@ def test_open_ticket_flow_uses_celery_glpi_client_in_mock_mode(monkeypatch) -> N
     send(controller, session_id, "__start__")
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "TI - Matriz")
     send(controller, session_id, "2")
     created_response = send(controller, session_id, "1")
 
     assert created_response["created_ticket"]["ticket_number"] == 10001
-    assert "Chamado Aberto com Sucesso!" in created_response["bot_message"]
+    assert "Solicitação registrada com sucesso." in created_response["bot_message"]
+    assert created_response["bot_messages"] is None
 
 
 def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() -> None:
@@ -367,11 +365,11 @@ def test_real_open_ticket_flow_uses_glpi_category_and_authenticated_requester() 
     send(controller, session_id, "__start__")
     send(controller, session_id, "1")
     send(controller, session_id, "1")
-    category_response = send(controller, session_id, "wifi caindo no deposito")
-    assert category_response["state"] == "description_review"
-    assert "INFRAESTRUTURA > REDES > WI-FI" not in category_response["bot_message"]
+    impact_response = send(controller, session_id, "wifi caindo no deposito")
+    assert impact_response["state"] == "impact_selection"
+    assert "Revise o texto do chamado" not in impact_response["bot_message"]
+    assert "INFRAESTRUTURA > REDES > WI-FI" not in impact_response["bot_message"]
 
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "Matriz")
     send(controller, session_id, "2")
@@ -412,7 +410,6 @@ def test_real_open_ticket_flow_requires_valid_glpi_location() -> None:
     send(controller, session_id, "1")
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     invalid_location = send(controller, session_id, "unidade inexistente")
 
@@ -448,7 +445,6 @@ def test_real_open_ticket_flow_accepts_numbered_glpi_location_choice() -> None:
     send(controller, session_id, "1")
     send(controller, session_id, "1")
     send(controller, session_id, "Preciso de um mouse e teclado")
-    send(controller, session_id, "1")
     location_prompt = send(controller, session_id, "1")
     assert location_prompt["state"] == "location_collection"
     assert "Digite apenas" in location_prompt["bot_message"]
@@ -489,7 +485,6 @@ def test_real_open_ticket_flow_collects_evidence_until_done_and_sends_attachment
     send(controller, session_id, "1")
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "Matriz")
     evidence_prompt = send(controller, session_id, "1")
@@ -552,7 +547,6 @@ def test_real_open_ticket_flow_keeps_evidence_state_for_media_only_message() -> 
     send(controller, session_id, "1")
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "Matriz")
     send(controller, session_id, "1")
@@ -610,7 +604,6 @@ def test_real_open_ticket_flow_informs_when_glpi_attachment_link_fails() -> None
     send(controller, session_id, "1")
     send(controller, session_id, "1")
     send(controller, session_id, "wifi caindo no deposito")
-    send(controller, session_id, "1")
     send(controller, session_id, "2")
     send(controller, session_id, "Matriz")
     send(controller, session_id, "1")
@@ -629,5 +622,6 @@ def test_real_open_ticket_flow_informs_when_glpi_attachment_link_fails() -> None
     send(controller, session_id, "pronto")
 
     created_response = send(controller, session_id, "1")
-    assert "Alguns anexos não entraram no GLPI desta vez" in created_response["bot_message"]
-    assert "erro.png" in created_response["bot_message"]
+    assert "Solicitação registrada com sucesso." in created_response["bot_message"]
+    assert "Alguns anexos não foram enviados ao GLPI" in created_response["bot_message"]
+    assert "erro.png" not in created_response["bot_message"]

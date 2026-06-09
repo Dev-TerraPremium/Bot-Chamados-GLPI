@@ -504,6 +504,6 @@ botctl redis keys
   motivo claro e janela controlada.
 - Para desbloquear autenticacao de um usuario, prefira apagar somente a chave
   `channel_link:whatsapp:<telefone>`.
-- A categoria selecionada internamente nao e exibida na revisao do chamado por
-  padrao. Controle isso com `botctl env set SHOW_CATEGORY_IN_REVIEW false`;
-  reative apenas se a operacao pedir explicitamente.
+- O fluxo de abertura usa confirmacao curta antes do registro do chamado. As
+  telas antigas de revisao de descricao e revisao final nao fazem parte da
+  navegacao do usuario.

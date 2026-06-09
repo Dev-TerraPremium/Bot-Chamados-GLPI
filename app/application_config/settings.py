@@ -59,7 +59,6 @@ class AppSettings:
     ai_ollama_num_predict: int = 300
     ai_ollama_num_thread: int = 4
     ai_ollama_temperature: float = 0.1
-    show_category_in_review: bool = False
     max_message_length: int = 1000
     rate_limit_messages_per_minute: int = 20
     rate_limit_messages_per_hour: int = 200
@@ -214,7 +213,6 @@ def load_settings() -> AppSettings:
         ai_ollama_num_predict=_get_int("AI_OLLAMA_NUM_PREDICT", 300),
         ai_ollama_num_thread=_get_int("AI_OLLAMA_NUM_THREAD", 4),
         ai_ollama_temperature=_get_float("AI_OLLAMA_TEMPERATURE", 0.1),
-        show_category_in_review=_get_bool("SHOW_CATEGORY_IN_REVIEW", False),
         max_message_length=_get_int("MAX_MESSAGE_LENGTH", 1000),
         rate_limit_messages_per_minute=_get_int(
             "RATE_LIMIT_MESSAGES_PER_MINUTE", 20

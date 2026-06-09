@@ -17,7 +17,6 @@ from app.conversation_engine.conversation_menu_validator import ConversationMenu
 from app.conversation_engine.conversation_messages import (
     build_complement_review_message,
     build_description_clarification_message,
-    build_description_review_message,
     build_evidence_question,
     build_invalid_option_message,
     build_location_prompt,
@@ -587,11 +586,7 @@ class ConversationFlowController:
         mapping = {1: 1, 2: 2, 3: 4, 4: 6, 5: 3, 6: 5, 7: 12}
         category_id = mapping.get(validation.choice, 12)
         self._set_category(context, category_id)
-        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-        return self._result(
-            context,
-            self._build_description_review(context),
-        )
+        return self._advance_after_category_confirmed(context)
 
     def _handle_real_category_selection(
         self,
@@ -609,11 +604,7 @@ class ConversationFlowController:
         ]
         if 1 <= choice <= len(options):
             self._set_glpi_category(context, options[choice - 1])
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                self._build_description_review(context),
-            )
+            return self._advance_after_category_confirmed(context)
 
         search_choice = len(options) + 1
         cancel_choice = len(options) + 2
@@ -699,11 +690,7 @@ class ConversationFlowController:
                     "Escolha uma categoria real antes de abrir o chamado.\n\n"
                     + self._render_real_category_menu(context),
                 )
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                self._build_description_review(context),
-            )
+            return self._advance_after_category_confirmed(context)
         if validation.choice == 2:
             self.state_machine.transition_to(context, ConversationState.OTHER_CATEGORY_TEXT)
             return self._result(
@@ -712,32 +699,14 @@ class ConversationFlowController:
             )
 
         self._set_category(context, 12)
-        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-        return self._result(
-            context,
-            self._build_description_review(context),
-        )
+        return self._advance_after_category_confirmed(context)
 
     def _handle_description_review(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        validation = self.menu_validator.require_choice(message, {1, 2, 3, 4})
-        if not validation.is_valid:
-            return self._result(context, validation.message)
-        if validation.choice == 1:
-            self.state_machine.transition_to(context, ConversationState.IMPACT_SELECTION)
-            return self._result(context, render_impact_menu())
-        if validation.choice == 2:
-            self._reset_description_for_rewrite(context)
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_COLLECTION)
-            return self._result(context, build_open_ticket_prompt())
-        if validation.choice == 3:
-            context.organized_description = context.original_description
-            self.state_machine.transition_to(context, ConversationState.IMPACT_SELECTION)
-            return self._result(context, render_impact_menu())
-
-        context.move_to_main_menu()
-        return self._cancel_to_main_menu(context, "❌ **Chamado cancelado com segurança.**")
+        # Legacy sessions can still be parked here after deploy. Move them forward
+        # without rendering the disabled review menu again.
+        return self._advance_after_category_confirmed(context)
 
     def _handle_impact(
         self, context: ConversationContext, message: str
@@ -891,25 +860,12 @@ class ConversationFlowController:
     def _handle_final_confirmation(
         self, context: ConversationContext, message: str
     ) -> ConversationTurnResult:
-        validation = self.menu_validator.require_choice(message, {1, 2, 3})
+        validation = self.menu_validator.require_choice(message, {1, 2})
         if not validation.is_valid:
             return self._result(context, validation.message)
 
         if validation.choice == 1:
             return self._create_ticket(context)
-        if validation.choice == 2:
-            self.state_machine.transition_to(context, ConversationState.CATEGORY_SELECTION)
-            category_menu = (
-                self._render_real_category_menu(context)
-                if self.settings.is_glpi_real_mode
-                else render_category_menu()
-            )
-            return self._result(
-                context,
-                "✏️ **Vamos corrigir as informações do chamado.**\n\n"
-                + category_menu,
-                ticket_preview=context.ticket_preview,
-            )
 
         context.move_to_main_menu()
         return self._cancel_to_main_menu(context, "❌ **Chamado cancelado com segurança.**")
@@ -1083,7 +1039,7 @@ class ConversationFlowController:
         self.state_machine.transition_to(context, ConversationState.FINAL_CONFIRMATION)
         return self._result(
             context,
-            self.ticket_summary_builder.render_summary_message(summary),
+            self._render_short_open_confirmation(),
             ticket_preview=context.ticket_preview,
         )
 
@@ -1109,13 +1065,12 @@ class ConversationFlowController:
         if existing_ticket:
             context.move_to_main_menu()
             created_message = (
-                "✅ **Esse chamado já foi registrado com segurança.**\n\n"
+                "✅ Esse chamado já foi registrado.\n\n"
                 + self._render_created_ticket_message(existing_ticket)
             )
             return self._result(
                 context,
                 created_message,
-                bot_messages=[created_message, self._build_main_menu(context.user)],
                 created_ticket=existing_ticket,
             )
 
@@ -1160,7 +1115,6 @@ class ConversationFlowController:
         return self._result(
             context,
             created_message,
-            bot_messages=[created_message, self._build_main_menu(context.user)],
             created_ticket=created_ticket_data,
         )
 
@@ -1224,11 +1178,7 @@ class ConversationFlowController:
         context.description_clarification_question = None
 
         if context.selected_category_id:
-            self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-            return self._result(
-                context,
-                self._build_description_review(context),
-            )
+            return self._advance_after_category_confirmed(context)
 
         if self.settings.is_glpi_real_mode:
             try:
@@ -1273,11 +1223,7 @@ class ConversationFlowController:
                 "Escolha uma categoria real antes de abrir o chamado.\n\n"
                 + self._render_real_category_menu(context),
             )
-        self.state_machine.transition_to(context, ConversationState.DESCRIPTION_REVIEW)
-        return self._result(
-            context,
-            self._build_description_review(context),
-        )
+        return self._advance_after_category_confirmed(context)
 
     def _detail_description(
         self,
@@ -1530,11 +1476,18 @@ class ConversationFlowController:
             candidates.append(candidate)
         return candidates
 
-    def _build_description_review(self, context: ConversationContext) -> str:
-        return build_description_review_message(
-            context.organized_description or "",
-            context.selected_category_name,
-            show_category=self.settings.show_category_in_review,
+    def _advance_after_category_confirmed(
+        self, context: ConversationContext
+    ) -> ConversationTurnResult:
+        self.state_machine.transition_to(context, ConversationState.IMPACT_SELECTION)
+        return self._result(context, render_impact_menu())
+
+    @staticmethod
+    def _render_short_open_confirmation() -> str:
+        return (
+            "Posso abrir seu chamado agora?\n\n"
+            "1️⃣ **Sim, abrir chamado**\n"
+            "2️⃣ **Cancelar**"
         )
 
     def _organize_description(
@@ -1808,7 +1761,6 @@ class ConversationFlowController:
         return f"{context.session_id}:{digest}"
 
     def _render_created_ticket_message(self, created_ticket: dict) -> str:
-        category = created_ticket.get("category") or created_ticket.get("category_name") or "Suporte TI"
         ticket_number = created_ticket["ticket_number"]
         ticket_url = build_ticket_public_url(
             self.settings.glpi_ticket_public_url_template,
@@ -1817,30 +1769,20 @@ class ConversationFlowController:
         expected_attachments = int(created_ticket.get("attachments_expected_count") or 0)
         uploaded_attachments = int(created_ticket.get("attachments_uploaded_count") or 0)
         attachment_errors = [str(item) for item in created_ticket.get("attachment_errors") or []]
-        if expected_attachments:
-            attachment_line = f"\n📎 **Anexos vinculados:** {uploaded_attachments}/{expected_attachments}"
-        else:
-            attachment_line = ""
+        ticket_link_line = f"\nAcompanhe: {ticket_url}" if ticket_url else ""
         if attachment_errors:
-            failed_names = ", ".join(attachment_errors)
             attachment_feedback = (
-                f"{attachment_line}\n"
-                "⚠️ **Alguns anexos não entraram no GLPI desta vez.**\n"
-                f"Arquivos pendentes: {failed_names}\n"
-                "O chamado foi aberto normalmente e já registrei esse alerta para acompanhamento."
+                "\n⚠️ Alguns anexos não foram enviados ao GLPI; a equipe foi avisada."
             )
+        elif expected_attachments and uploaded_attachments < expected_attachments:
+            attachment_feedback = "\n⚠️ Alguns anexos podem não ter sido enviados ao GLPI."
         else:
-            attachment_feedback = attachment_line
-        ticket_link_line = f"🔗 **Acessar chamado:** {ticket_url}\n" if ticket_url else ""
+            attachment_feedback = ""
         return (
-            "🎉 **Chamado Aberto com Sucesso!**\n\n"
-            "Sua solicitação já está com nossa equipe técnica.\n\n"
-            f"🆔 **Ticket:** #{ticket_number}\n"
-            f"📂 **Categoria:** {category}\n"
-            f"🚦 **Prioridade:** {created_ticket['severity']}\n"
+            "Solicitação registrada com sucesso.\n"
+            f"Chamado: #{ticket_number}"
             f"{ticket_link_line}"
-            f"{attachment_feedback}\n"
-            "\n⏳ **Próximo passo:** Um técnico analisará seu caso e você receberá atualizações por aqui."
+            f"{attachment_feedback}"
         )
 
     def _result(

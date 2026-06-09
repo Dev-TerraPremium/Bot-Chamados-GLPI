@@ -150,10 +150,9 @@ O deploy instala `botctl` em `/usr/local/bin` apontando para
 `/opt/bot-chamados-glpi/scripts/botctl.py`. A base de conhecimento operacional
 completa esta em `docs/OPERATIONS_KB.md`.
 
-Para manter a revisão do chamado sem exibir categoria ao usuário, deixe
-`SHOW_CATEGORY_IN_REVIEW=false`. Se for necessário reativar essa exibição em
-produção, use `botctl env set SHOW_CATEGORY_IN_REVIEW true` e reinicie os
-serviços indicados pelo próprio `botctl`.
+O fluxo de abertura usa apenas uma confirmação curta antes de registrar o
+chamado. As telas antigas de revisão de descrição e revisão final não fazem
+parte da navegação do usuário.
 
 ## Testes
 
