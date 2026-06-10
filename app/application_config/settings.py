@@ -9,6 +9,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(PROJECT_ROOT / ".env.local", override=True)
 
+DEFAULT_TICKET_NOTIFICATION_DISABLED_EVENT_TYPES = (
+    "ticket_urgency_changed,"
+    "ticket_category_changed,"
+    "ticket_taken_changed,"
+    "ticket_group_responsible_linked,"
+    "task_added,"
+    "ticket_waiting_changed"
+)
+
 
 def _get_bool(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
@@ -108,6 +117,7 @@ class AppSettings:
     ticket_notification_error_alert_cooldown_seconds: int = 300
     ticket_notification_error_alert_consecutive_failures: int = 3
     ticket_notification_include_private_events: bool = True
+    ticket_notification_disabled_event_types: str = DEFAULT_TICKET_NOTIFICATION_DISABLED_EVENT_TYPES
     ticket_notification_watch_ttl_days: int = 30
     ticket_notification_dispatch_timeout_seconds: float = 5.0
     whatsapp_outbound_base_url: str = "http://whatsapp:8081"
@@ -274,6 +284,10 @@ def load_settings() -> AppSettings:
         ticket_notification_error_alert_cooldown_seconds=_get_int("TICKET_NOTIFICATION_ERROR_ALERT_COOLDOWN_SECONDS", 300),
         ticket_notification_error_alert_consecutive_failures=_get_int("TICKET_NOTIFICATION_ERROR_ALERT_CONSECUTIVE_FAILURES", 3),
         ticket_notification_include_private_events=_get_bool("TICKET_NOTIFICATION_INCLUDE_PRIVATE_EVENTS", True),
+        ticket_notification_disabled_event_types=os.getenv(
+            "TICKET_NOTIFICATION_DISABLED_EVENT_TYPES",
+            DEFAULT_TICKET_NOTIFICATION_DISABLED_EVENT_TYPES,
+        ),
         ticket_notification_watch_ttl_days=_get_int("TICKET_NOTIFICATION_WATCH_TTL_DAYS", 30),
         ticket_notification_dispatch_timeout_seconds=_get_float("TICKET_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS", 5.0),
         whatsapp_outbound_base_url=os.getenv("WHATSAPP_OUTBOUND_BASE_URL", "http://whatsapp:8081"),

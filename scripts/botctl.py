@@ -35,6 +35,14 @@ DEFAULT_HEALTH_URL = "http://127.0.0.1:8000"
 SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "scheduler", "redis", "ollama")
 ENV_RESTART_SERVICES = ("web", "whatsapp", "worker-ai", "worker-glpi", "scheduler")
 SECRET_NAMES = ("TOKEN", "PASSWORD", "PASS", "SECRET", "PEPPER")
+DEFAULT_TICKET_NOTIFICATION_DISABLED_EVENT_TYPES = (
+    "ticket_urgency_changed,"
+    "ticket_category_changed,"
+    "ticket_taken_changed,"
+    "ticket_group_responsible_linked,"
+    "task_added,"
+    "ticket_waiting_changed"
+)
 
 CONFIG_MANUAL = {
     "Sistema e Ambiente": {
@@ -85,6 +93,7 @@ CONFIG_MANUAL = {
         "TICKET_NOTIFICATION_INTERNAL_UPDATE_NUMBERS": "Numeros internos que recebem copia das atualizacoes dos chamados monitorados.",
         "TICKET_NOTIFICATION_ERROR_ALERT_NUMBERS": "Numeros que recebem alerta quando o monitoramento ou envio por WhatsApp falha.",
         "TICKET_NOTIFICATION_INCLUDE_PRIVATE_EVENTS": "Quando true, eventos privados do GLPI tambem geram notificacoes.",
+        "TICKET_NOTIFICATION_DISABLED_EVENT_TYPES": "Lista separada por virgula de tipos de atualizacao que nao devem ser enviados. Vazio reabilita todos.",
         "TICKET_NOTIFICATION_WATCH_TTL_DAYS": "Por quantos dias o bot continua observando um chamado aberto.",
         "TICKET_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS": "Timeout do envio interno para o conector WhatsApp.",
         "WHATSAPP_OUTBOUND_BASE_URL": "Endereco interno do conector WhatsApp usado para enviar mensagens ativas.",
@@ -304,7 +313,14 @@ def notification_diagnostics(
         return [["Notificacoes GLPI", "degraded", "; ".join(problems)]]
 
     interval = env.get("TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS", "30")
-    return [["Notificacoes GLPI", "ok", f"poll ativo a cada {interval}s"]]
+    disabled_events = env.get(
+        "TICKET_NOTIFICATION_DISABLED_EVENT_TYPES",
+        DEFAULT_TICKET_NOTIFICATION_DISABLED_EVENT_TYPES,
+    ).strip()
+    detail = f"poll ativo a cada {interval}s"
+    if disabled_events:
+        detail += f"; eventos suprimidos: {disabled_events}"
+    return [["Notificacoes GLPI", "ok", detail]]
 
 
 def health_json(path: str) -> dict | None:

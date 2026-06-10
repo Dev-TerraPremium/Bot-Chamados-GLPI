@@ -185,6 +185,26 @@ periodicamente poucos usuarios vinculados por rodada, respeitando
 que ainda nao estavam sendo observados e cria baseline sem disparar notificacoes
 antigas em massa.
 
+Alguns tipos de atualizacao podem ser suprimidos globalmente por
+`TICKET_NOTIFICATION_DISABLED_EVENT_TYPES`. O padrao do codigo bloqueia estes
+envios:
+
+- `ticket_urgency_changed`
+- `ticket_category_changed`
+- `ticket_taken_changed`
+- `ticket_group_responsible_linked`
+- `task_added`
+- `ticket_waiting_changed`
+
+Para reabilitar todos os tipos suprimidos:
+
+```bash
+botctl env set TICKET_NOTIFICATION_DISABLED_EVENT_TYPES ""
+botctl restart scheduler worker-glpi whatsapp web
+```
+
+Para manter apenas parte bloqueada, informe uma lista separada por virgula.
+
 Diagnostico rapido:
 
 ```bash

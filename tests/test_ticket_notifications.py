@@ -176,6 +176,36 @@ def snapshot_with_status(ticket_id: int, status: int, *followups):
     )
 
 
+def snapshot_with_ticket_fields(ticket_id: int = 9145, **fields):
+    snapshot = snapshot_with_followups()
+    return TicketActivitySnapshot(
+        ticket_id=ticket_id,
+        ticket={
+            **snapshot.ticket,
+            "id": ticket_id,
+            **fields,
+        },
+        related_items=snapshot.related_items,
+    )
+
+
+def snapshot_with_related_items(
+    ticket_id: int = 9145,
+    *,
+    ticket_fields: dict | None = None,
+    related_items: dict | None = None,
+):
+    snapshot = snapshot_with_ticket_fields(ticket_id, **(ticket_fields or {}))
+    return TicketActivitySnapshot(
+        ticket_id=ticket_id,
+        ticket=snapshot.ticket,
+        related_items={
+            **snapshot.related_items,
+            **(related_items or {}),
+        },
+    )
+
+
 def deleted_snapshot(ticket_id: int):
     snapshot = snapshot_with_status(ticket_id, 2)
     return TicketActivitySnapshot(
@@ -441,6 +471,154 @@ def test_pipeline_can_ignore_private_events_by_env():
 
     assert summary["ignored"] == 1
     assert dispatcher.sent == []
+
+
+def test_pipeline_suppresses_selected_notification_events_by_default():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9145,
+            requester_phone="556699990980",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_poll_interval_seconds=0,
+        ),
+        redis_client=redis_client,
+        event_reader=FakeReader(
+            [
+                snapshot_with_ticket_fields(
+                    urgency=2,
+                    itilcategories_id=651,
+                    takeintoaccountdate="",
+                    begin_waiting_date="",
+                ),
+                snapshot_with_related_items(
+                    ticket_fields={
+                        "urgency": 4,
+                        "itilcategories_id": 644,
+                        "takeintoaccountdate": "2026-06-09 16:51:19",
+                        "begin_waiting_date": "2026-06-09 16:53:42",
+                    },
+                    related_items={
+                        "TicketTask": [
+                            {
+                                "id": 501,
+                                "content": "Feito.",
+                                "date_creation": "2026-06-09 16:52:00",
+                            }
+                        ],
+                        "Group_Ticket": [
+                            {
+                                "id": 502,
+                                "groups_id": 28,
+                                "linked_group_name": "ROO > Corp. TI > Sistemas",
+                                "type": 2,
+                                "date_creation": "2026-06-09 16:52:30",
+                            }
+                        ],
+                    },
+                ),
+            ]
+        ),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    pipeline.run_once()
+    summary = pipeline.run_once()
+
+    assert summary["captured"] == 6
+    assert summary["suppressed"] == 6
+    assert summary["ignored"] == 6
+    assert summary["sent"] == 0
+    assert dispatcher.sent == []
+
+
+def test_pipeline_reenables_suppressed_notification_events_when_env_list_is_empty():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    store = TicketNotificationStore(redis_client)
+    store.watch_ticket(
+        WatchedTicket(
+            ticket_id=9145,
+            requester_phone="556699990980",
+            requester_name="Pedro Torres",
+            requester_login="pedro.torres",
+            category_name="Sistemas",
+            title="Erro no sistema",
+            location="Matriz",
+            created_at="2026-05-11 12:00:00",
+        )
+    )
+    dispatcher = FakeDispatcher()
+    pipeline = TicketNotificationPipeline(
+        settings=AppSettings(
+            state_backend="redis",
+            ticket_notifications_enabled=True,
+            whatsapp_internal_api_token="token",
+            ticket_notification_poll_interval_seconds=0,
+            ticket_notification_disabled_event_types="",
+        ),
+        redis_client=redis_client,
+        event_reader=FakeReader(
+            [
+                snapshot_with_ticket_fields(
+                    urgency=2,
+                    itilcategories_id=651,
+                    takeintoaccountdate="",
+                    begin_waiting_date="",
+                ),
+                snapshot_with_related_items(
+                    ticket_fields={
+                        "urgency": 4,
+                        "itilcategories_id": 644,
+                        "takeintoaccountdate": "2026-06-09 16:51:19",
+                        "begin_waiting_date": "2026-06-09 16:53:42",
+                    },
+                    related_items={
+                        "TicketTask": [
+                            {
+                                "id": 501,
+                                "content": "Feito.",
+                                "date_creation": "2026-06-09 16:52:00",
+                            }
+                        ],
+                        "Group_Ticket": [
+                            {
+                                "id": 502,
+                                "groups_id": 28,
+                                "linked_group_name": "ROO > Corp. TI > Sistemas",
+                                "type": 2,
+                                "date_creation": "2026-06-09 16:52:30",
+                            }
+                        ],
+                    },
+                ),
+            ]
+        ),
+        dispatcher=dispatcher,
+        store=store,
+    )
+
+    pipeline.run_once()
+    summary = pipeline.run_once()
+
+    assert summary["captured"] == 6
+    assert summary["suppressed"] == 0
+    assert summary["sent"] == 6
+    assert len(dispatcher.sent) == 6
 
 
 def test_pipeline_sends_ticket_updates_to_internal_numbers():

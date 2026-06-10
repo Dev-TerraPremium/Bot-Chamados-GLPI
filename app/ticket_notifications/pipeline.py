@@ -16,6 +16,7 @@ from app.ticket_notifications.status_rules import (
     is_monitorable_ticket,
     is_terminal_status,
 )
+from app.ticket_notifications.suppression_rules import TicketNotificationSuppressionRules
 from app.ticket_notifications.whatsapp_dispatcher import WhatsAppNotificationDispatcher
 from app.microsoft_teams.dispatcher import TeamsNotificationDispatcher
 
@@ -36,6 +37,7 @@ class TicketNotificationPipeline:
         metrics: NotificationMetricsRecorder | None = None,
         backfill_service=None,
         teams_dispatcher: TeamsNotificationDispatcher | None = None,
+        suppression_rules: TicketNotificationSuppressionRules | None = None,
     ) -> None:
         self.settings = settings
         self.store = store or TicketNotificationStore(
@@ -51,6 +53,9 @@ class TicketNotificationPipeline:
         self.metrics = metrics or NotificationMetricsRecorder(redis_client)
         self.backfill_service = backfill_service
         self.teams_dispatcher = teams_dispatcher
+        self.suppression_rules = suppression_rules or TicketNotificationSuppressionRules(
+            settings.ticket_notification_disabled_event_types
+        )
 
     def run_once(self) -> dict[str, int]:
         summary = {
@@ -60,6 +65,7 @@ class TicketNotificationPipeline:
             "sent": 0,
             "sent_internal": 0,
             "ignored": 0,
+            "suppressed": 0,
             "failed": 0,
             "stopped": 0,
             "rescheduled": 0,
@@ -173,6 +179,20 @@ class TicketNotificationPipeline:
                 logger.info(
                     "ticket_notification_event_ignored_private",
                     extra={"ticket_id": event.ticket_id, "event_type": event.event_type},
+                )
+                continue
+            disabled_key = self.suppression_rules.disabled_key(event)
+            if disabled_key:
+                summary["ignored"] += 1
+                summary["suppressed"] += 1
+                self.metrics.increment("events_suppressed_by_env")
+                logger.info(
+                    "ticket_notification_event_suppressed_by_env",
+                    extra={
+                        "ticket_id": event.ticket_id,
+                        "event_type": event.event_type,
+                        "disabled_key": disabled_key,
+                    },
                 )
                 continue
             internal_numbers = self._internal_update_numbers()

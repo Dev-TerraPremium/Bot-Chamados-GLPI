@@ -55,4 +55,33 @@ def test_notification_diagnostics_reports_ok_with_required_runtime_parts():
 
     rows = botctl.notification_diagnostics(env, containers=containers)
 
+    assert rows == [
+        [
+            "Notificacoes GLPI",
+            "ok",
+            (
+                "poll ativo a cada 15s; eventos suprimidos: "
+                "ticket_urgency_changed,ticket_category_changed,"
+                "ticket_taken_changed,ticket_group_responsible_linked,"
+                "task_added,ticket_waiting_changed"
+            ),
+        ]
+    ]
+
+
+def test_notification_diagnostics_shows_empty_suppression_list_as_fully_enabled():
+    botctl = load_botctl_module()
+    env = {
+        "TICKET_NOTIFICATIONS_ENABLED": "true",
+        "TICKET_NOTIFICATION_POLL_INTERVAL_SECONDS": "15",
+        "TICKET_NOTIFICATION_DISABLED_EVENT_TYPES": "",
+        "STATE_BACKEND": "redis",
+        "USE_CELERY_WORKERS": "true",
+        "GLPI_INTEGRATION_MODE": "real",
+        "WHATSAPP_INTERNAL_API_TOKEN": "secret",
+    }
+    containers = [{"Service": "scheduler", "State": "running"}]
+
+    rows = botctl.notification_diagnostics(env, containers=containers)
+
     assert rows == [["Notificacoes GLPI", "ok", "poll ativo a cada 15s"]]
