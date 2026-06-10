@@ -1,4 +1,4 @@
-import re
+import logging
 
 from app.application_config.settings import AppSettings
 from app.local_light_ai.generative_description_organizer import (
@@ -8,20 +8,25 @@ from app.local_light_ai.generative_description_organizer import (
 from app.triage_rules.title_generation_service import TitleGenerationService
 
 
+logger = logging.getLogger(__name__)
+
+
 class GenerativeTitleGenerator:
     def __init__(self, client: LocalGenerativeClient, num_predict: int = 150):
         self.client = client
         self.num_predict = num_predict
+        self.fallback_service = TitleGenerationService()
 
     def generate_title(self, category_name: str, description: str) -> str:
         if not description.strip():
-            return "Chamado de TI"
+            return TitleGenerationService.FALLBACK_TITLE
 
         system_prompt = (
             "Voce e um gerador de titulos curtos para chamados de TI.\n"
-            "Crie um titulo natural, direto e com no maximo 10 palavras.\n"
+            "Crie um titulo natural, direto, profissional e com no maximo 10 palavras.\n"
             "Nao inclua categoria, caminho de categoria, setor interno, solicitante "
             "ou metadados.\n"
+            "Nao corte palavras e nao use reticencias.\n"
             "Exemplo bom: Mouse com falha no clique.\n"
             "Retorne estritamente em JSON com a chave 'title'."
         )
@@ -42,23 +47,14 @@ class GenerativeTitleGenerator:
             )
             title = str(payload.get("title", "")).strip()
             if title:
-                return self._clean_title(title, category_name)
-        except Exception:
-            pass
+                return TitleGenerationService.clean_title(title, category_name)
+        except Exception as exc:
+            logger.warning(
+                "generative_title_generation_failed",
+                extra={"error": str(exc)},
+            )
 
-        return self._clean_title(description[:70].strip(), category_name)
-
-    @staticmethod
-    def _clean_title(title: str, category_name: str) -> str:
-        title = re.sub(r"\s+", " ", title).strip(" .:-")
-        category = re.sub(r"\s+", " ", category_name or "").strip()
-        if category and title.casefold().startswith(category.casefold()):
-            title = title[len(category) :].strip(" .:-")
-        if " - " in title and ">" in title.split(" - ", maxsplit=1)[0]:
-            title = title.split(" - ", maxsplit=1)[1].strip()
-        if ">" in title:
-            title = title.split(">")[-1].strip(" .:-")
-        return (title or "Chamado de TI")[:100]
+        return self.fallback_service.generate_title(category_name, description)
 
 
 def build_generative_title_generator(

@@ -20,7 +20,7 @@ def test_static_title_generator_does_not_prefix_category() -> None:
         "Solicito a compra de um kit mouse e teclado.",
     )
 
-    assert title == "Solicito a compra de um kit mouse e teclado"
+    assert title == "Compra de um kit mouse e teclado"
     assert "INFRAESTRUTURA" not in title
 
 
@@ -57,5 +57,59 @@ def test_title_builder_is_deterministic_by_default(monkeypatch) -> None:
         "Estou com problema de nota na tela 1234.",
     )
 
-    assert title == "Estou com problema de nota na tela 1234"
+    assert title == "Problema de nota na tela 1234"
     assert fake_client.user_prompt == ""
+
+
+def test_static_title_generator_uses_first_meaningful_sentence() -> None:
+    title = TitleGenerationService().generate_title(
+        "SISTEMAS > ERP",
+        (
+            "Estou com problema para emitir nota fiscal na tela 1234. "
+            "Quando tento salvar, aparece o erro 500."
+        ),
+    )
+
+    assert title == "Problema para emitir nota fiscal na tela 1234"
+
+
+def test_static_title_generator_limits_without_breaking_words() -> None:
+    title = TitleGenerationService().generate_title(
+        "INFRAESTRUTURA",
+        (
+            "Usuario informa que o computador do departamento financeiro esta "
+            "reiniciando constantemente durante o fechamento mensal"
+        ),
+    )
+
+    assert len(title) <= TitleGenerationService.MAX_TITLE_CHARS
+    assert title == "Computador do departamento financeiro esta reiniciando"
+    assert not title.endswith("reiniciand")
+
+
+def test_static_title_generator_cleans_html_and_common_terms() -> None:
+    title = TitleGenerationService().generate_title(
+        "REDE > WIFI",
+        "<p>preciso de ajuda com o wifi da sala de reuniao!!!</p>",
+    )
+
+    assert title == "Ajuda com o Wi-Fi da sala de reuniao"
+
+
+def test_static_title_generator_uses_safe_fallback_for_empty_or_generic_text() -> None:
+    generator = TitleGenerationService()
+
+    assert generator.generate_title("SISTEMAS", "") == "Chamado de TI"
+    assert generator.generate_title("SISTEMAS", "erro") == "Chamado de TI"
+
+
+def test_generative_title_generator_recleans_generic_model_prefixes() -> None:
+    client = FakeTitleClient("Solicitante relatou que esta com erro no GLPI")
+    generator = GenerativeTitleGenerator(client=client)
+
+    title = generator.generate_title(
+        "SISTEMAS > GLPI",
+        "Nao consigo abrir chamados no GLPI.",
+    )
+
+    assert title == "Erro no GLPI"
